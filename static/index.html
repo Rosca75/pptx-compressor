@@ -52,7 +52,10 @@
     <div class="progress-section" id="progress-section" style="display:none">
       <div class="progress-header">
         <span id="progress-phase">Compressing…</span>
-        <span id="progress-counts">0 / 0</span>
+        <span class="progress-meta">
+          <span id="progress-saved"></span>
+          <span id="progress-counts">0 / 0</span>
+        </span>
       </div>
       <div class="progress-track">
         <div class="progress-fill" id="progress-fill"></div>
@@ -76,17 +79,19 @@
       <table class="media-table" id="media-table" style="display:none">
         <thead>
           <tr>
-            <th>Part</th>
-            <th>Format</th>
-            <th>Dimensions</th>
-            <th>Size</th>
-            <th>Alpha</th>
-            <th>Refs</th>
+            <th>Preview</th>
+            <th class="sortable" data-sort="partName">Part</th>
+            <th class="sortable" data-sort="format">Format</th>
+            <th class="sortable" data-sort="pixels">Dimensions</th>
+            <th class="sortable num" data-sort="bytes">Size</th>
+            <th class="sortable" data-sort="hasAlpha">Alpha</th>
+            <th class="sortable num" data-sort="refCount">Refs</th>
             <th>Proposed action</th>
-            <th>Est. size</th>
+            <th class="sortable num" data-sort="estimatedBytes">Est. size</th>
+            <th>Override</th>
           </tr>
         </thead>
-        <tbody id="media-tbody"><!-- TODO: rows rendered by table.js --></tbody>
+        <tbody id="media-tbody"></tbody>
       </table>
 
       <!-- Before/after report (shown when a run completes) -->
@@ -148,6 +153,11 @@
         <input type="checkbox" id="opt-use-webp" disabled>
         Output WebP (M365 ≥ 2402 only)
       </label>
+      <p class="option-warning" id="webp-warning" style="display:none">
+        <i data-feather="alert-triangle"></i>
+        Requires PowerPoint Microsoft 365 version 2402 or later — older Office
+        cannot display WebP images.
+      </p>
     </div>
 
     <!-- Group: cleanup -->

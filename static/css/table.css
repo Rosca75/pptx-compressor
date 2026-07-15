@@ -55,3 +55,32 @@
 .action-badge.convert    { background: rgba(80,200,120,0.15); color: var(--success); }
 .action-badge.skip       { background: rgba(245,166,35,0.15); color: var(--warning); }
 .action-badge.remove     { background: rgba(231,76,60,0.15);  color: var(--danger); }
+
+/* ---------------------------------------------------------------------------
+   Thumbnails (preview column)
+--------------------------------------------------------------------------- */
+.media-table td.thumb-cell { width: 56px; }
+.thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.thumb img { max-width: 100%; max-height: 100%; display: block; }
+
+/* Sortable headers show a pointer and highlight on hover. */
+.media-table th.sortable { cursor: pointer; user-select: none; }
+.media-table th.sortable:hover { background: var(--primary-light); }
+
+/* Per-image override dropdown sits compactly in its column. */
+.override-select { padding: 2px var(--space-xs); font-size: 0.75rem; }
+
+/* Report per-image table saved column highlights real savings. */
+.media-table td.num.saved { color: var(--success); font-weight: var(--font-weight-semi); }
+
+/* "unused" / savings hints in small grey text. */
+.media-table td small { color: var(--text-light); font-size: 0.7rem; }
