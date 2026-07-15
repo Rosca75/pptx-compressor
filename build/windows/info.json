@@ -1,0 +1,18 @@
+{
+  "fixed": {
+    "file_info": {
+      "product_name": "PPTX Compressor",
+      "comments": "Shrinks PowerPoint files by recompressing embedded images"
+    }
+  },
+  "info": {
+    "0000": {
+      "ProductVersion": "0.1.0",
+      "CompanyName": "Rosca75",
+      "FileDescription": "PPTX Compressor",
+      "LegalCopyright": "",
+      "ProductName": "PPTX Compressor",
+      "Comments": "Shrinks PowerPoint files by recompressing embedded images"
+    }
+  }
+}
