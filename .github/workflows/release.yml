@@ -1,0 +1,53 @@
+name: Release
+
+# Triggers when a version tag is pushed (e.g. git tag v1.0.0 && git push origin v1.0.0)
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+
+  # ──────────────────────────────────────────────────────────────
+  # Windows build — produces pptx-compressor.exe
+  # Must run on windows-latest: Wails embeds WebView2 which
+  # requires Windows SDK headers at compile time.
+  # ──────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write   # required to create releases and upload assets
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Set up Node.js (required by Wails to bundle the frontend)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build Windows binary
+        # -o -> output filename inside build/bin/
+        run: wails build -platform windows/amd64 -o pptx-compressor.exe
+
+      - name: Upload Windows binary as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binary
+          path: build/bin/pptx-compressor.exe
+
+      - name: Create GitHub Release and attach the binary
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/bin/pptx-compressor.exe
+          # Auto-generates release notes from commits and merged PRs since the last tag
+          generate_release_notes: true

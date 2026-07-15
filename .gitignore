@@ -1,0 +1,42 @@
+# Wails build output
+build/bin/
+build/
+
+# Binary outputs
+pptx-compressor
+*.exe
+
+# Go build artifacts
+*.o
+*.a
+*.so
+*.test
+*.out
+
+# Node (Wails toolchain; no npm deps in this project, but keep it ignored)
+node_modules/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Test .pptx fixtures / compression output
+*_compressed.pptx
+samples/
+testdata/output/
+
+# Coverage
+coverage.out
+coverage.html
+*.coverprofile
+
+# Vendor directory
+vendor/
