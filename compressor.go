@@ -163,8 +163,15 @@ func runCompression(ctx context.Context, req CompressionRequest) {
 	}
 
 	// ---- write output + safety check ------------------------------------
-	outPath := compressedOutputPath(req.Path)
-	if err := p.WritePptx(outPath, true); err != nil {
+	//
+	// We ALWAYS write to the "<name>_compressed.pptx" staging path first and
+	// verify it, even when the user asked to replace the original. Only once we
+	// have a proven-good file do we optionally move it over the source. This
+	// guarantees a failed or structurally-broken run never damages the original
+	// (domain rule: never modify the source until a verified output exists).
+	srcSizeBefore := fileSize(req.Path) // captured before any replace
+	stagingPath := compressedOutputPath(req.Path)
+	if err := p.WritePptx(stagingPath, true); err != nil {
 		finishError(fmt.Sprintf("write output: %v", err))
 		return
 	}
@@ -172,17 +179,31 @@ func runCompression(ctx context.Context, req CompressionRequest) {
 	// Re-open the written file and verify every relationship resolves. If the
 	// output is structurally broken we discard it rather than hand the user a
 	// file PowerPoint would refuse to open.
-	if err := verifyOutput(outPath); err != nil {
-		removeFile(outPath)
+	if err := verifyOutput(stagingPath); err != nil {
+		removeFile(stagingPath)
 		finishError(fmt.Sprintf("output failed safety check: %v", err))
 		return
+	}
+
+	// Decide the final destination. When ReplaceOriginal is set, move the
+	// verified staging file over the source (os.Rename replaces the existing
+	// file atomically on both Windows and Unix). Otherwise the staging file IS
+	// the deliverable.
+	outPath := stagingPath
+	if opts.ReplaceOriginal {
+		if err := os.Rename(stagingPath, req.Path); err != nil {
+			removeFile(stagingPath)
+			finishError(fmt.Sprintf("replace original: %v", err))
+			return
+		}
+		outPath = req.Path
 	}
 
 	// Success — record final whole-file sizes.
 	jobMutex.Lock()
 	jobProgress.State = "done"
 	jobProgress.OutputPath = outPath
-	jobProgress.FileBytesBefore = fileSize(req.Path)
+	jobProgress.FileBytesBefore = srcSizeBefore
 	jobProgress.FileBytesAfter = fileSize(outPath)
 	jobMutex.Unlock()
 }

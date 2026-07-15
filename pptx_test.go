@@ -271,6 +271,68 @@ func TestRenameMediaPartUpdatesRelsAndContentTypes(t *testing.T) {
 	}
 }
 
+// TestMediaPlacement verifies that placement detection distinguishes an image
+// genuinely placed on a slide from one that is only referenced by a stale
+// relationship (present but invisible) or a true orphan (no relationship).
+func TestMediaPlacement(t *testing.T) {
+	// mk builds an in-memory zip entry.
+	mk := func(name, data string) *zipEntry { return &zipEntry{name: name, data: []byte(data)} }
+	// rels builds a minimal .rels document with one image relationship.
+	rels := func(id, target string) string {
+		return `<?xml version="1.0"?>` +
+			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+			`<Relationship Id="` + id + `" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="` + target + `"/>` +
+			`</Relationships>`
+	}
+
+	p := &PptxFile{
+		ctDefaults:  map[string]string{},
+		ctOverrides: map[string]string{},
+		relsIndex:   map[string][]relRef{},
+		Entries: []*zipEntry{
+			// used.png: rId1 is actually referenced by slide1's body → on a slide.
+			mk("ppt/slides/slide1.xml", `<p:sld><p:pic><a:blip r:embed="rId1"/></p:pic></p:sld>`),
+			mk("ppt/slides/_rels/slide1.xml.rels", rels("rId1", "../media/used.png")),
+			// logo.png: referenced and placed, but only on a layout (not a slide).
+			mk("ppt/slideLayouts/slideLayout1.xml", `<p:sldLayout><a:blip r:embed="rId1"/></p:sldLayout>`),
+			mk("ppt/slideLayouts/_rels/slideLayout1.xml.rels", rels("rId1", "../media/logo.png")),
+			// stale.png: slide2 has a relationship for it, but the body never uses
+			// rId1 → present in the file but invisible.
+			mk("ppt/slides/slide2.xml", `<p:sld></p:sld>`),
+			mk("ppt/slides/_rels/slide2.xml.rels", rels("rId1", "../media/stale.png")),
+			// The media parts themselves. orphan.png has no relationship at all.
+			mk("ppt/media/used.png", "x"),
+			mk("ppt/media/logo.png", "x"),
+			mk("ppt/media/stale.png", "x"),
+			mk("ppt/media/orphan.png", "x"),
+		},
+	}
+	if err := p.BuildRelsIndex(); err != nil {
+		t.Fatalf("build rels index: %v", err)
+	}
+
+	cases := []struct {
+		part        string
+		wantOnSlide bool
+		wantUsage   string
+	}{
+		{"ppt/media/used.png", true, "slide"},
+		{"ppt/media/logo.png", false, "layout"},
+		{"ppt/media/stale.png", false, "unused (stale ref)"},
+		{"ppt/media/orphan.png", false, "unused"},
+	}
+	for _, c := range cases {
+		place := p.MediaPlacement(c.part)
+		if place.UsedOnSlide != c.wantOnSlide {
+			t.Errorf("%s: UsedOnSlide = %v, want %v", c.part, place.UsedOnSlide, c.wantOnSlide)
+		}
+		got := usageLabel(p.RefCount(c.part), place)
+		if got != c.wantUsage {
+			t.Errorf("%s: usage = %q, want %q", c.part, got, c.wantUsage)
+		}
+	}
+}
+
 func TestRemoveMediaPartRefusesReferenced(t *testing.T) {
 	p, _ := OpenPptx(syntheticPptx(t))
 	p.BuildRelsIndex()

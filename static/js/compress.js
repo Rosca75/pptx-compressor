@@ -7,7 +7,7 @@
 import { state } from './state.js';
 import { apiStartCompression, apiGetProgress, apiCancelCompression } from './api.js';
 import { readOptions } from './options.js';
-import { showToast } from './components.js';
+import { showToast, showConfirm } from './components.js';
 import { renderReport } from './report.js';
 import { formatBytes } from './helpers.js';
 
@@ -27,6 +27,20 @@ async function onCompress() {
   if (!state.pptxPath) return;
 
   const req = { path: state.pptxPath, options: readOptions() };
+
+  // Replacing the original is destructive and has no undo — confirm first.
+  if (req.options.replaceOriginal) {
+    showConfirm(
+      'This will overwrite the original file with the compressed version. Continue?',
+      () => startRun(req)
+    );
+    return;
+  }
+  startRun(req);
+}
+
+/** Kick off the background job and begin polling for progress. */
+async function startRun(req) {
   try {
     await apiStartCompression(req);
     setRunningUI(true);

@@ -33,5 +33,6 @@ export const state = {
     useWebp: false,
     removeUnusedMedia: true,
     stripEmbeddedFonts: false,
+    replaceOriginal: false,
   },
 };

@@ -75,17 +75,34 @@
            to inventory its embedded images and estimate savings.</p>
       </div>
 
+      <!-- Bulk-selection action bar: appears once one or more rows are ticked.
+           Lets the user apply a single override to every selected image. -->
+      <div class="bulk-actions" id="bulk-actions" style="display:none">
+        <span class="bulk-count" id="bulk-count">0 selected</span>
+        <label class="bulk-field">
+          Set override
+          <select id="bulk-override">
+            <option value="auto">Auto</option>
+            <option value="skip">Skip</option>
+            <option value="remove">Remove</option>
+          </select>
+        </label>
+        <button class="btn btn-primary btn-sm" id="bulk-apply">Apply to selected</button>
+        <button class="btn btn-outline btn-sm" id="bulk-clear">Clear selection</button>
+      </div>
+
       <!-- Analysis table (populated by table.js after analysis) -->
       <table class="media-table" id="media-table" style="display:none">
         <thead>
           <tr>
+            <th class="select-col"><input type="checkbox" id="select-all" title="Select all"></th>
             <th>Preview</th>
             <th class="sortable" data-sort="partName">Part</th>
             <th class="sortable" data-sort="format">Format</th>
             <th class="sortable" data-sort="pixels">Dimensions</th>
             <th class="sortable num" data-sort="bytes">Size</th>
             <th class="sortable" data-sort="hasAlpha">Alpha</th>
-            <th class="sortable num" data-sort="refCount">Refs</th>
+            <th class="sortable" data-sort="usedOnSlide">Usage</th>
             <th>Proposed action</th>
             <th class="sortable num" data-sort="estimatedBytes">Est. size</th>
             <th>Override</th>
@@ -160,6 +177,25 @@
       </p>
     </div>
 
+    <!-- Group: output file — new copy vs replace the original -->
+    <div class="option-group">
+      <div class="option-label">Output file</div>
+      <label class="radio-label">
+        <input type="radio" name="opt-output-mode" value="copy" checked disabled>
+        Create a new copy (<code>…_compressed.pptx</code>)
+      </label>
+      <label class="radio-label">
+        <input type="radio" name="opt-output-mode" value="replace" disabled>
+        Replace the original file
+      </label>
+      <p class="option-warning" id="replace-warning" style="display:none">
+        <i data-feather="alert-triangle"></i>
+        The original file will be overwritten with the compressed version. The
+        replacement only happens after the new file passes a safety check, but
+        there is no undo — keep a backup if you are unsure.
+      </p>
+    </div>
+
     <!-- Group: cleanup -->
     <div class="option-group">
       <div class="option-label">Cleanup</div>
@@ -174,8 +210,9 @@
     </div>
 
     <p class="option-note">
-      Per-image skip/remove overrides are set from the table.
-      The original file is never modified.
+      Per-image skip/remove overrides are set from the table. Tick several rows
+      to apply an override to all of them at once. By default a new copy is
+      written and the original is left untouched.
     </p>
   </div>
 

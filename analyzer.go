@@ -137,6 +137,12 @@ func AnalyzeMedia(p *PptxFile, opts CompressionOptions) []MediaInfo {
 			RefCount: p.RefCount(name),
 		}
 
+		// Determine where the image is ACTUALLY placed (not merely referenced by
+		// a stale relationship). This drives the "used on a slide?" column.
+		place := p.MediaPlacement(name)
+		info.UsedOnSlide = place.UsedOnSlide
+		info.Usage = usageLabel(info.RefCount, place)
+
 		format := detectFormat(e.data)
 		info.Format = format
 
@@ -160,6 +166,31 @@ func AnalyzeMedia(p *PptxFile, opts CompressionOptions) []MediaInfo {
 		out = append(out, info)
 	}
 	return out
+}
+
+// usageLabel turns a reference count plus a placement result into the short
+// label shown in the analysis table's "Usage" column.
+//
+//   - Placed somewhere        -> the sorted location list, e.g. "slide" or
+//     "slide, master" or "layout".
+//   - Referenced but placed
+//     nowhere (stale rels)     -> "unused (stale ref)" — present but invisible.
+//   - Not referenced at all    -> "unused" — a true orphan.
+func usageLabel(refCount int, place PlacementInfo) string {
+	if len(place.Locations) > 0 {
+		return strings.Join(place.Locations, ", ")
+	}
+	if refCount == 0 {
+		return "unused"
+	}
+	return "unused (stale ref)"
+}
+
+// isUnusedUsage reports whether a usage label produced by usageLabel means the
+// image is placed nowhere (a true orphan or a stale reference). Used for the
+// summary "unused" count and the UI's warning styling.
+func isUnusedUsage(usage string) bool {
+	return strings.HasPrefix(usage, "unused")
 }
 
 // =============================================================================

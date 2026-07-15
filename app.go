@@ -105,7 +105,10 @@ func (a *App) AnalyzePptx(path string) AnalysisResult {
 	for _, m := range media {
 		totalMedia += m.Bytes
 		totalEst += m.EstimatedBytes
-		if m.RefCount == 0 {
+		// "Unused" now means the image is placed nowhere (a true orphan OR a
+		// stale relationship that no slide/layout/master actually uses), not
+		// merely RefCount == 0. See usageLabel / MediaPlacement.
+		if isUnusedUsage(m.Usage) {
 			unused++
 		}
 	}

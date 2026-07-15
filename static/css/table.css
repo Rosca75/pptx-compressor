@@ -57,7 +57,7 @@
 .action-badge.remove     { background: rgba(231,76,60,0.15);  color: var(--danger); }
 
 /* ---------------------------------------------------------------------------
-   Thumbnails (preview column)
+   Thumbnails (preview column) — with hover-to-enlarge
 --------------------------------------------------------------------------- */
 .media-table td.thumb-cell { width: 56px; }
 .thumb {
@@ -69,8 +69,46 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  /* Enlarge smoothly on hover (see .thumb:hover below). */
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transform-origin: left center;
 }
 .thumb img { max-width: 100%; max-height: 100%; display: block; }
+
+/* Mouse-over preview: scale the thumbnail up so the user can inspect the image
+   without opening it. Grows from the left edge into the table so it stays in
+   view, and lifts above neighbouring rows with a shadow. */
+.thumb:hover {
+  transform: scale(3.2);
+  box-shadow: var(--shadow-md);
+  z-index: 30;
+  position: relative;
+  background: var(--bg);
+}
+
+/* ---------------------------------------------------------------------------
+   Row selection (checkbox column + bulk actions)
+--------------------------------------------------------------------------- */
+.media-table th.select-col,
+.media-table td.select-cell { width: 32px; text-align: center; }
+.media-table td.select-cell input,
+.media-table th.select-col input { cursor: pointer; }
+.media-table tbody tr.row-selected { background: rgba(74,144,226,0.10); }
+.media-table tbody tr.row-selected:hover { background: rgba(74,144,226,0.16); }
+
+/* Usage badges (is the image actually placed on a slide?). */
+.usage-badge {
+  display: inline-block;
+  padding: 2px var(--space-sm);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semi);
+  background: var(--bg-subtle);
+  color: var(--text-light);
+}
+.usage-badge.on-slide  { background: rgba(80,200,120,0.15); color: var(--success); }
+.usage-badge.off-slide { background: rgba(74,144,226,0.15); color: var(--primary-light); }
+.usage-badge.unused    { background: rgba(231,76,60,0.15);  color: var(--danger); }
 
 /* Sortable headers show a pointer and highlight on hover. */
 .media-table th.sortable { cursor: pointer; user-select: none; }

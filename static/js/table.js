@@ -14,6 +14,10 @@ let currentMedia = [];
 let sortKey = null;
 let sortDir = 1; // 1 = ascending, -1 = descending
 
+// Set of part names currently ticked for a bulk override. View-only transient
+// selection (like sortKey), keyed by part name so it survives re-sorts.
+const selected = new Set();
+
 /**
  * Render the analysis table from an AnalysisResult.
  * @param {Object} result - AnalysisResult { media[], ... }.
@@ -25,7 +29,8 @@ export function renderTable(result) {
 
   currentMedia = (result && result.media) || [];
 
-  // A fresh analysis hides any prior report card.
+  // A fresh analysis clears any prior selection and hides the report card.
+  selected.clear();
   if (reportCard) reportCard.style.display = 'none';
 
   const has = currentMedia.length > 0;
@@ -33,7 +38,9 @@ export function renderTable(result) {
   if (table) table.style.display = has ? '' : 'none';
 
   wireSortHeaders();
+  wireBulkControls();
   drawRows();
+  updateBulkBar();
 }
 
 /** Attach one-time click handlers to the sortable column headers. */
@@ -79,6 +86,7 @@ function compareBy(a, b, key) {
   const val = (m) => {
     if (key === 'pixels') return (m.width || 0) * (m.height || 0);
     if (key === 'hasAlpha') return m.hasAlpha ? 1 : 0;
+    if (key === 'usedOnSlide') return m.usedOnSlide ? 1 : 0;
     return m[key];
   };
   const av = val(a), bv = val(b);
@@ -92,14 +100,16 @@ function rowHtml(m) {
   const effAction = effectiveAction(m, override);
   const effEst = effectiveEstimate(m, override);
 
-  return `<tr data-part="${escapeHtml(m.partName)}">
+  const isSel = selected.has(m.partName);
+  return `<tr data-part="${escapeHtml(m.partName)}"${isSel ? ' class="row-selected"' : ''}>
+    <td class="select-cell"><input type="checkbox" class="row-select" data-part="${escapeHtml(m.partName)}"${isSel ? ' checked' : ''}></td>
     <td class="thumb-cell"><div class="thumb" data-part="${escapeHtml(m.partName)}"></div></td>
     <td class="part-name" title="${escapeHtml(m.partName)}">${escapeHtml(shortName(m.partName))}</td>
     <td>${escapeHtml(m.format)}</td>
     <td class="num">${formatDimensions(m.width, m.height)}</td>
     <td class="num">${formatBytes(m.bytes)}</td>
     <td>${m.hasAlpha ? 'yes' : '—'}</td>
-    <td class="num">${m.refCount}${m.refCount === 0 ? ' <small>unused</small>' : ''}</td>
+    <td>${usageCell(m)}</td>
     <td><span class="${badgeClass(effAction)}">${escapeHtml(effAction)}</span></td>
     <td class="num">${formatBytes(effEst)} <small>${formatSavings(m.bytes, effEst)}</small></td>
     <td>
@@ -137,12 +147,25 @@ function effectiveEstimate(m, override) {
   return m.estimatedBytes;
 }
 
+/**
+ * Build the "Usage" cell: whether the image is actually placed on a slide, only
+ * on a layout/master, or nowhere (present but unused). The label comes from the
+ * backend (MediaInfo.usage); the reference count is kept in the tooltip.
+ */
+function usageCell(m) {
+  const usage = m.usage || (m.usedOnSlide ? 'slide' : 'unused');
+  const unused = /^unused/.test(usage);
+  const cls = 'usage-badge' + (unused ? ' unused' : (m.usedOnSlide ? ' on-slide' : ' off-slide'));
+  const title = `${m.refCount || 0} relationship reference(s)`;
+  return `<span class="${cls}" title="${escapeHtml(title)}">${escapeHtml(usage)}</span>`;
+}
+
 /** Trim the ppt/media/ prefix for display; full name stays in the title attr. */
 function shortName(part) {
   return String(part || '').replace(/^ppt\/media\//, '');
 }
 
-/** Wire the per-row override dropdowns to state.overrides. */
+/** Wire the per-row override dropdowns and selection checkboxes. */
 function wireRowControls(tbody) {
   tbody.querySelectorAll('.override-select').forEach((sel) => {
     sel.addEventListener('change', () => {
@@ -152,6 +175,77 @@ function wireRowControls(tbody) {
       drawRows(); // re-render so the action badge + estimate reflect the override
     });
   });
+
+  tbody.querySelectorAll('.row-select').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const part = cb.dataset.part;
+      if (cb.checked) selected.add(part);
+      else selected.delete(part);
+      // Reflect selection styling on the row without a full redraw.
+      const tr = cb.closest('tr');
+      if (tr) tr.classList.toggle('row-selected', cb.checked);
+      updateBulkBar();
+    });
+  });
+}
+
+/**
+ * Wire the bulk-action bar controls and the header "select all" checkbox.
+ * Guarded so the listeners are attached only once (like wireSortHeaders).
+ */
+function wireBulkControls() {
+  const selectAll = document.getElementById('select-all');
+  if (selectAll && !selectAll.dataset.wired) {
+    selectAll.dataset.wired = '1';
+    selectAll.addEventListener('change', () => {
+      if (selectAll.checked) currentMedia.forEach((m) => selected.add(m.partName));
+      else selected.clear();
+      drawRows();
+      updateBulkBar();
+    });
+  }
+
+  const applyBtn = document.getElementById('bulk-apply');
+  if (applyBtn && !applyBtn.dataset.wired) {
+    applyBtn.dataset.wired = '1';
+    applyBtn.addEventListener('click', () => {
+      const value = document.getElementById('bulk-override').value;
+      selected.forEach((part) => {
+        if (value === 'auto') delete state.overrides[part];
+        else state.overrides[part] = value;
+      });
+      drawRows(); // reflect new action badges + estimates
+    });
+  }
+
+  const clearBtn = document.getElementById('bulk-clear');
+  if (clearBtn && !clearBtn.dataset.wired) {
+    clearBtn.dataset.wired = '1';
+    clearBtn.addEventListener('click', () => {
+      selected.clear();
+      drawRows();
+      updateBulkBar();
+    });
+  }
+}
+
+/** Show/hide the bulk bar and sync the count + "select all" checkbox state. */
+function updateBulkBar() {
+  const bar = document.getElementById('bulk-actions');
+  const count = document.getElementById('bulk-count');
+  const selectAll = document.getElementById('select-all');
+
+  const n = selected.size;
+  if (bar) bar.style.display = n > 0 ? '' : 'none';
+  if (count) count.textContent = n + ' selected';
+
+  if (selectAll) {
+    const total = currentMedia.length;
+    selectAll.checked = total > 0 && n === total;
+    // Show the partial-selection (indeterminate) state when some, but not all,
+    // rows are ticked.
+    selectAll.indeterminate = n > 0 && n < total;
+  }
 }
 
 /**

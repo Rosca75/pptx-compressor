@@ -30,7 +30,15 @@ function els() {
     removeUnused:  document.getElementById('opt-remove-unused-media'),
     stripFonts:    document.getElementById('opt-strip-embedded-fonts'),
     webpWarning:   document.getElementById('webp-warning'),
+    outputMode:    document.querySelectorAll('input[name="opt-output-mode"]'),
+    replaceWarning: document.getElementById('replace-warning'),
   };
+}
+
+/** Return the currently-selected output mode ("copy" or "replace"). */
+function selectedOutputMode(radios) {
+  for (const r of radios) if (r.checked) return r.value;
+  return 'copy';
 }
 
 /** Wire up the options panel. Called once on init. */
@@ -54,6 +62,17 @@ export function initOptions() {
   if (e.useWebp && e.webpWarning) {
     e.useWebp.addEventListener('change', () => {
       e.webpWarning.style.display = e.useWebp.checked ? '' : 'none';
+    });
+  }
+
+  // Choosing "Replace the original file" shows a destructive-action warning.
+  if (e.outputMode && e.replaceWarning) {
+    e.outputMode.forEach((r) => {
+      r.addEventListener('change', () => {
+        const replace = selectedOutputMode(e.outputMode) === 'replace';
+        e.replaceWarning.style.display = replace ? '' : 'none';
+        state.options.replaceOriginal = replace;
+      });
     });
   }
 
@@ -116,6 +135,7 @@ export function readOptions() {
     useWebp: !!(e.useWebp && e.useWebp.checked),
     removeUnusedMedia: !!(e.removeUnused && e.removeUnused.checked),
     stripEmbeddedFonts: !!(e.stripFonts && e.stripFonts.checked),
+    replaceOriginal: selectedOutputMode(e.outputMode) === 'replace',
     perImageOverrides: { ...state.overrides },
   };
 }
