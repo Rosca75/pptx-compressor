@@ -44,6 +44,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"strings"
 )
 
@@ -361,6 +362,106 @@ func (p *PptxFile) BuildRelsIndex() error {
 // Zero means the part is unused (an orphan) and may be removed.
 func (p *PptxFile) RefCount(partName string) int {
 	return len(p.relsIndex[partName])
+}
+
+// =============================================================================
+// Placement — is the image ACTUALLY used, and where?
+// =============================================================================
+//
+// A reference count on its own is misleading. A .rels file can contain a
+// <Relationship> that targets a media part while NOTHING in the owning part's
+// body actually references that relationship's Id. PowerPoint frequently leaves
+// such "stale" relationships behind after a user deletes a picture, so the
+// image is still stored in the file yet is invisible on every slide.
+//
+// To tell "really used" from "merely referenced" we confirm placement: a media
+// relationship counts as USED only when its Id (e.g. "rId5") appears inside the
+// XML body of the part that owns the .rels file (as an attribute value such as
+// r:embed="rId5" or r:link="rId5"). Because a relationship Id is unique within
+// its .rels file and always quoted where it is used, a simple quoted-substring
+// scan of the owner's XML is a robust, format-agnostic test — we do not have to
+// enumerate every element type that can carry an image.
+
+// PlacementInfo summarises where a media part is genuinely placed within the
+// package, as opposed to merely referenced by an unused relationship.
+type PlacementInfo struct {
+	// UsedOnSlide is true when the image is placed on at least one real slide
+	// (an owning ppt/slides/slideN.xml references the relationship's Id).
+	UsedOnSlide bool
+
+	// Locations is the sorted, de-duplicated set of owner kinds where the image
+	// is actually placed: any of "slide", "layout", "master", "notes",
+	// "notes master" or "other". Empty means the image is placed nowhere.
+	Locations []string
+}
+
+// MediaPlacement inspects every relationship that targets partName and reports
+// where the image is genuinely placed (see the section comment above). It reads
+// bytes only and never modifies the package. BuildRelsIndex must have run first.
+func (p *PptxFile) MediaPlacement(partName string) PlacementInfo {
+	var info PlacementInfo
+	seen := map[string]bool{}
+
+	for _, ref := range p.relsIndex[partName] {
+		// The part whose .rels file this relationship lives in.
+		owner := relsOwnerPart(ref.relsPart)
+		oe := p.entry(owner)
+
+		// Placement is confirmed only when the owning part's body actually
+		// references the relationship Id. If the owner part or the Id is
+		// missing we cannot confirm placement, so this reference does not count.
+		placed := false
+		if oe != nil && ref.id != "" {
+			needle := []byte(`"` + ref.id + `"`)
+			placed = bytes.Contains(oe.data, needle)
+		}
+		if !placed {
+			continue
+		}
+
+		kind := ownerKind(owner)
+		if kind == "slide" {
+			info.UsedOnSlide = true
+		}
+		if !seen[kind] {
+			seen[kind] = true
+			info.Locations = append(info.Locations, kind)
+		}
+	}
+
+	sort.Strings(info.Locations)
+	return info
+}
+
+// relsOwnerPart returns the part that owns a given .rels file. A relationships
+// file named "<dir>/_rels/<file>.rels" belongs to the part "<dir>/<file>".
+// Example: "ppt/slides/_rels/slide1.xml.rels" -> "ppt/slides/slide1.xml".
+// The package-level "_rels/.rels" has no owning part and returns "".
+func relsOwnerPart(relsName string) string {
+	parent := path.Dir(path.Dir(relsName)) // strip "_rels/<file>.rels" -> "<dir>"
+	owner := strings.TrimSuffix(path.Base(relsName), ".rels")
+	if parent == "." || parent == "" {
+		return owner // e.g. package-level "_rels/.rels" -> ""
+	}
+	return parent + "/" + owner
+}
+
+// ownerKind classifies an owning part by its folder into a short usage label.
+func ownerKind(owner string) string {
+	switch {
+	case strings.HasPrefix(owner, "ppt/slides/"):
+		return "slide"
+	case strings.HasPrefix(owner, "ppt/slideLayouts/"):
+		return "layout"
+	case strings.HasPrefix(owner, "ppt/slideMasters/"):
+		return "master"
+	case strings.HasPrefix(owner, "ppt/notesSlides/"):
+		return "notes"
+	case strings.HasPrefix(owner, "ppt/notesMasters/"):
+		return "notes master"
+	default:
+		return "other"
+	}
 }
 
 // relsBaseDir returns the folder that relationship targets in the given .rels

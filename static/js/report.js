@@ -20,8 +20,10 @@ export function renderReport(p) {
   const before = p.fileBytesBefore || p.bytesBefore || 0;
   const after = p.fileBytesAfter || p.bytesAfter || 0;
 
-  // Hide the analysis table so the report is the focus.
+  // Hide the analysis table (and its bulk-action bar) so the report is the focus.
   if (table) table.style.display = 'none';
+  const bulk = document.getElementById('bulk-actions');
+  if (bulk) bulk.style.display = 'none';
   card.style.display = '';
 
   card.innerHTML = `

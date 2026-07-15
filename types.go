@@ -77,6 +77,21 @@ type MediaInfo struct {
 	// (when the "remove unused media" option is enabled).
 	RefCount int `json:"refCount"`
 
+	// UsedOnSlide is true only when this image is ACTUALLY placed on at least
+	// one real slide — i.e. some ppt/slides/slideN.xml body references the
+	// relationship that targets this part. A part can have RefCount > 0 yet be
+	// UsedOnSlide == false: PowerPoint often leaves behind a stale relationship
+	// (or an image used only on a layout/master), so the picture is present in
+	// the file but invisible on every slide. This is the "present but unused"
+	// case the reference count alone cannot see.
+	UsedOnSlide bool `json:"usedOnSlide"`
+
+	// Usage is a short human-readable label describing where the image is
+	// actually placed: e.g. "slide", "layout", "master", "slide, master", or
+	// "unused" / "unused (stale ref)" when it is placed nowhere. Filled in by
+	// the analyzer (see AnalyzeMedia / usageLabel).
+	Usage string `json:"usage"`
+
 	// ProposedAction is the plan for this part, e.g. "recompress-jpeg",
 	// "png->jpeg", "quantize", "downscale", "skip", "remove". Filled in by the
 	// analyzer based on the active CompressionOptions.
@@ -159,6 +174,13 @@ type CompressionOptions struct {
 
 	// StripEmbeddedFonts removes embedded font parts to save additional space.
 	StripEmbeddedFonts bool `json:"stripEmbeddedFonts"`
+
+	// ReplaceOriginal overwrites the source .pptx with the compressed result
+	// instead of writing a separate <name>_compressed.pptx alongside it. The
+	// replacement happens only AFTER the new file is fully written and passes
+	// the relationship safety check, so a failed or invalid run never damages
+	// the original. Off by default — the safe behaviour is a new copy.
+	ReplaceOriginal bool `json:"replaceOriginal"`
 
 	// PerImageOverrides maps a part name (e.g. "ppt/media/image3.png") to an
 	// explicit action that overrides the global plan for that single image,

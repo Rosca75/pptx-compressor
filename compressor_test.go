@@ -192,6 +192,43 @@ func TestPipelineConvertsOpaquePngAndShrinks(t *testing.T) {
 	}
 }
 
+func TestPipelineReplaceOriginal(t *testing.T) {
+	src := buildDeck(t, []mediaSpec{
+		{name: "ppt/media/image1.png", data: photoPNG(t, 900, 700), referenced: true},
+	})
+	origSize := fileSize(src)
+
+	// No "<name>_compressed.pptx" should exist yet.
+	staging := compressedOutputPath(src)
+
+	prog := runSync(t, src, CompressionOptions{Preset: "balanced", MinSizeKB: 1, ReplaceOriginal: true})
+	if prog.State != "done" {
+		t.Fatalf("state = %q, errors=%v", prog.State, prog.Errors)
+	}
+
+	// The output path must be the ORIGINAL file, not a _compressed copy.
+	if prog.OutputPath != src {
+		t.Errorf("output path = %q, want original %q", prog.OutputPath, src)
+	}
+	// The staging file must have been moved (renamed) onto the original, so it
+	// no longer exists on its own.
+	if _, err := os.Stat(staging); err == nil {
+		t.Errorf("staging file %q should have been moved onto the original", staging)
+	}
+	// The original file must now be smaller than before.
+	if got := fileSize(src); got >= origSize {
+		t.Errorf("original not shrunk: before=%d after=%d", origSize, got)
+	}
+	// And it must still be a valid package with resolvable relationships.
+	out, err := OpenPptx(src)
+	if err != nil {
+		t.Fatalf("reopen replaced original: %v", err)
+	}
+	if err := out.VerifyRelationships(); err != nil {
+		t.Errorf("replaced original relationships broken: %v", err)
+	}
+}
+
 func TestPipelineNeverEnlarges(t *testing.T) {
 	// A 1×1 PNG cannot be made smaller — it must be kept as-is.
 	tiny := makePNG(t, color.NRGBA{R: 1, G: 2, B: 3, A: 255})
