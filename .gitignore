@@ -1,6 +1,6 @@
-# Wails build output
+# Wails build output (only bin/ is generated; the rest of build/ holds
+# committed packaging assets: appicon.png/svg, windows/icon.ico, manifests)
 build/bin/
-build/
 
 # Binary outputs
 pptx-compressor
