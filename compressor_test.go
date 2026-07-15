@@ -10,6 +10,7 @@ import (
 	"context"
 	"image"
 	"image/color"
+	"image/gif"
 	"image/png"
 	"math"
 	"os"
@@ -34,6 +35,9 @@ func buildDeck(t *testing.T, media []mediaSpec) string {
 		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
 		`<Default Extension="xml" ContentType="application/xml"/>` +
 		`<Default Extension="png" ContentType="image/png"/>` +
+		`<Default Extension="gif" ContentType="image/gif"/>` +
+		`<Default Extension="emf" ContentType="image/x-emf"/>` +
+		`<Default Extension="fntdata" ContentType="application/x-fontdata"/>` +
 		`<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>` +
 		`</Types>`
 
@@ -252,4 +256,166 @@ func TestPipelineCancellation(t *testing.T) {
 	if _, err := os.Stat(compressedOutputPath(src)); err == nil {
 		t.Error("cancelled run left an output file")
 	}
+}
+
+// animatedGIFBytes builds a 2-frame animated GIF (must be passed through
+// untouched by the pipeline).
+func animatedGIFBytes(t *testing.T) []byte {
+	t.Helper()
+	pal := color.Palette{color.Black, color.White, color.RGBA{200, 50, 50, 255}}
+	frame := func() *image.Paletted {
+		return image.NewPaletted(image.Rect(0, 0, 16, 16), pal)
+	}
+	g := &gif.GIF{
+		Image: []*image.Paletted{frame(), frame()},
+		Delay: []int{10, 10},
+	}
+	var buf bytes.Buffer
+	if err := gif.EncodeAll(&buf, g); err != nil {
+		t.Fatalf("encode animated gif: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// emfBytes builds a minimal EMF header (a vector part; must be skipped).
+func emfBytes() []byte {
+	b := make([]byte, 128)
+	b[0] = 0x01 // EMR_HEADER record type
+	copy(b[40:44], " EMF")
+	return b
+}
+
+func TestPipelinePassesVectorsAndAnimatedGifUntouched(t *testing.T) {
+	emf := emfBytes()
+	anim := animatedGIFBytes(t)
+	src := buildDeck(t, []mediaSpec{
+		{name: "ppt/media/image1.emf", data: emf, referenced: true},
+		{name: "ppt/media/image2.gif", data: anim, referenced: true},
+		{name: "ppt/media/image3.png", data: photoPNG(t, 400, 300), referenced: true},
+	})
+
+	prog := runSync(t, src, CompressionOptions{Preset: "aggressive", MinSizeKB: 0})
+	if prog.State != "done" {
+		t.Fatalf("state = %q errs=%v", prog.State, prog.Errors)
+	}
+
+	out, err := OpenPptx(prog.OutputPath)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	// EMF and animated GIF must survive byte-for-byte under their original names.
+	if e := out.entry("ppt/media/image1.emf"); e == nil || !bytes.Equal(e.data, emf) {
+		t.Error("EMF vector was modified or renamed")
+	}
+	if e := out.entry("ppt/media/image2.gif"); e == nil || !bytes.Equal(e.data, anim) {
+		t.Error("animated GIF was modified or renamed")
+	}
+	// The photo PNG should have been converted (proving the run did real work).
+	if out.entry("ppt/media/image3.jpeg") == nil {
+		t.Error("photo png was not converted — pipeline did no work")
+	}
+	if err := out.VerifyRelationships(); err != nil {
+		t.Errorf("relationships broken: %v", err)
+	}
+}
+
+// buildFontDeck writes a deck that embeds one font, references it from
+// presentation.xml.rels, and lists it in an <p:embeddedFontLst> element.
+func buildFontDeck(t *testing.T) string {
+	t.Helper()
+	contentTypes := `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+		`<Default Extension="xml" ContentType="application/xml"/>` +
+		`<Default Extension="fntdata" ContentType="application/x-fontdata"/>` +
+		`<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>` +
+		`</Types>`
+	packageRels := `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>` +
+		`</Relationships>`
+	presentation := `<?xml version="1.0"?><p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">` +
+		`<p:embeddedFontLst><p:embeddedFont><p:font typeface="Fancy"/><p:regular r:id="rId2"/></p:embeddedFont></p:embeddedFontLst>` +
+		`</p:presentation>`
+	presentationRels := `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>` +
+		`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font" Target="fonts/font1.fntdata"/>` +
+		`</Relationships>`
+	slide := `<?xml version="1.0"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"></p:sld>`
+	slideRels := `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "fonts.pptx")
+	f, _ := os.Create(outPath)
+	defer f.Close()
+	zw := zip.NewWriter(f)
+	write := func(name string, data []byte) {
+		w, _ := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Deflate})
+		w.Write(data)
+	}
+	write("[Content_Types].xml", []byte(contentTypes))
+	write("_rels/.rels", []byte(packageRels))
+	write("ppt/presentation.xml", []byte(presentation))
+	write("ppt/_rels/presentation.xml.rels", []byte(presentationRels))
+	write("ppt/slides/slide1.xml", []byte(slide))
+	write("ppt/slides/_rels/slide1.xml.rels", []byte(slideRels))
+	write("ppt/fonts/font1.fntdata", make([]byte, 4096)) // dummy font payload
+	zw.Close()
+	return outPath
+}
+
+func TestStripEmbeddedFonts(t *testing.T) {
+	src := buildFontDeck(t)
+	prog := runSync(t, src, CompressionOptions{Preset: "balanced", StripEmbeddedFonts: true})
+	if prog.State != "done" {
+		t.Fatalf("state = %q errs=%v", prog.State, prog.Errors)
+	}
+	out, err := OpenPptx(prog.OutputPath)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	// Font part removed.
+	if out.entry("ppt/fonts/font1.fntdata") != nil {
+		t.Error("font part not removed")
+	}
+	// embeddedFontLst stripped from presentation.xml.
+	if pres := out.entry("ppt/presentation.xml"); bytes.Contains(pres.data, []byte("embeddedFontLst")) {
+		t.Error("embeddedFontLst not stripped from presentation.xml")
+	}
+	// Font relationship removed from the rels.
+	if rels := out.entry("ppt/_rels/presentation.xml.rels"); bytes.Contains(rels.data, []byte("font1.fntdata")) {
+		t.Error("font relationship not removed from presentation rels")
+	}
+	if err := out.VerifyRelationships(); err != nil {
+		t.Errorf("relationships broken after font strip: %v", err)
+	}
+}
+
+func TestAlreadyOptimizedDeckKeepsOriginals(t *testing.T) {
+	// A deck whose only image is a small, already-compressed JPEG should mostly
+	// report "kept" (no gain) rather than enlarge anything.
+	photo := photoPNG(t, 300, 200)
+	jpg, err := encodeJPEG(mustDecode(t, photo), 60) // pre-compress hard
+	if err != nil {
+		t.Fatalf("pre-encode: %v", err)
+	}
+	src := buildDeck(t, []mediaSpec{
+		{name: "ppt/media/image1.jpeg", data: jpg, referenced: true},
+	})
+	prog := runSync(t, src, CompressionOptions{Preset: "light", MinSizeKB: 0})
+	if prog.State != "done" {
+		t.Fatalf("state = %q", prog.State)
+	}
+	// Never-larger guarantee: output must not exceed input.
+	if prog.FileBytesAfter > prog.FileBytesBefore {
+		t.Errorf("already-optimized deck grew: %d -> %d", prog.FileBytesBefore, prog.FileBytesAfter)
+	}
+}
+
+// mustDecode decodes image bytes or fails the test.
+func mustDecode(t *testing.T, data []byte) image.Image {
+	t.Helper()
+	img, _, err := decodeImage(data)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return img
 }

@@ -25,7 +25,7 @@ modified.**
 - **Go code must be heavily commented** — explain every function and non-obvious block
 - Build command: `wails build -platform windows/amd64`
 - Dev mode (live reload): `wails dev`
-- Prerequisites: Go 1.24+, Wails CLI v2
+- Prerequisites: Go 1.25+ (jpegli minimum), Wails CLI v2
   (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`),
   Node.js 20+ (required by the Wails toolchain), WebView2 (pre-installed on Windows 10/11)
 
@@ -36,25 +36,29 @@ modified.**
 ```
 pptx-compressor/
 ├── main.go            91 lines   Wails app entry point (wails.Run, //go:embed)
-├── app.go            174 lines   App struct — all public methods bound to the JS frontend
-├── types.go          202 lines   Shared API types + global background-job state
-├── pptx.go            31 lines   [stub] ZIP open/rewrite, content types, .rels graph
-├── analyzer.go        23 lines   [stub] media inventory + savings estimation
-├── compressor.go      24 lines   [stub] worker-pool compression pipeline
-├── codec.go           23 lines   [stub] alpha detection + JPEG/PNG/WebP encoders
-├── resize.go          17 lines   [stub] CatmullRom downscaling
+├── app.go            246 lines   App struct — all public methods bound to the JS frontend
+├── types.go          243 lines   Shared API types + global background-job state
+├── pptx.go           604 lines   ZIP open/rewrite, content types, .rels graph
+├── analyzer.go       284 lines   media inventory + savings estimation + presets
+├── compressor.go     496 lines   worker-pool compression pipeline + post-processing
+├── codec.go          642 lines   format detection, alpha, encoders, decision matrix, median-cut
+├── resize.go          59 lines   CatmullRom downscaling
+├── pptx_test.go      293 lines   container-layer tests (synthetic fixtures)
+├── codec_test.go     143 lines   detection / alpha / analyzer tests
+├── decision_test.go  174 lines   decision-matrix and encoder tests
+├── compressor_test.go 421 lines  end-to-end pipeline / scenario tests
 ├── wails.json                    Wails config (name, author, empty frontend:* fields)
 ├── go.mod / go.sum
 ├── .github/workflows/
 │   ├── ci.yml                    vet + gofmt + build matrix (ubuntu/windows/macos)
 │   └── release.yml               tag v* → wails build windows/amd64 → release
 └── static/                       ← active frontend (embedded via //go:embed all:static)
-    ├── index.html    178 lines   3-zone layout: top bar / analysis table / options panel
+    ├── index.html    188 lines   3-zone layout: top bar / analysis table / options panel
     ├── css/
     │   ├── base.css        67 lines   Design tokens, reset, typography
     │   ├── layout.css     143 lines   3-zone CSS grid
-    │   ├── table.css       57 lines   Analysis table + action badges
-    │   └── components.css 124 lines   Buttons, controls, toast, confirm
+    │   ├── table.css       86 lines   Analysis table + badges + thumbnails + sort
+    │   └── components.css 179 lines   Buttons, controls, toast, confirm, report, warning
     └── js/
         ├── app.js          16 lines   Entry point — imports modules, wires init()
         ├── state.js        37 lines   Shared state object (single source of truth)
@@ -62,15 +66,16 @@ pptx-compressor/
         ├── helpers.js      42 lines   Pure formatting utilities
         ├── components.js   59 lines   showToast(), showConfirm()
         ├── analyze.js      55 lines   File picker + Analyze flow
-        ├── options.js      46 lines   Options panel read/enable
-        ├── compress.js     96 lines   StartCompression + progress polling + Cancel
-        ├── table.js        48 lines   Renders the media analysis table
-        └── report.js       35 lines   Before/after report card
+        ├── options.js     121 lines   Options panel: presets, read/enable, WebP warning
+        ├── compress.js    108 lines   StartCompression + progress polling + Cancel
+        ├── table.js       176 lines   Analysis table: previews, override, sorting
+        └── report.js       96 lines   Before/after report card + per-image results
 ```
 
-> **Skeleton status:** the files marked `[stub]` contain only a package doc
-> comment describing their future role. The App methods in `app.go` return
-> placeholder values. A separate **BUILD.md** session fills in the business logic.
+> **Status:** v0.1.0 — the business logic is complete. `go build ./...` and
+> `go test ./...` pass; CI enforces `go vet` and `gofmt`. Requires **Go 1.25+**
+> (the jpegli encoder's minimum). The v2 deferral list at the end of BUILD.md is
+> the roadmap from here.
 
 ---
 
