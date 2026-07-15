@@ -134,17 +134,23 @@ func (a *App) AnalyzePptx(path string) AnalysisResult {
 // returns immediately with {"status":"running"}. The frontend then polls
 // GetProgress() until the state is "done", "cancelled" or "error".
 //
-// FUTURE CONTRACT: reset the shared job state, create a cancellable context,
-// store its cancel func in jobCancel, and start the worker-pool pipeline
-// (compressor.go). Writes <name>_compressed.pptx next to the source; the source
-// is never touched.
+// It resets the shared job state, creates a cancellable context (whose cancel
+// func is stored in jobCancel), and launches the worker-pool pipeline in a
+// background goroutine. It returns immediately; the frontend polls GetProgress.
+// The output is <name>_compressed.pptx next to the source; the source is never
+// touched.
 func (a *App) StartCompression(req CompressionRequest) map[string]string {
-	// STUB: mark the job idle and acknowledge. No work is started yet.
+	// Create a fresh cancellable context for this run and publish its cancel.
+	ctx, cancel := context.WithCancel(context.Background())
+
 	jobMutex.Lock()
-	jobProgress = ProgressResult{State: "idle"}
+	jobProgress = ProgressResult{State: "running"}
+	jobCancel = cancel
 	jobMutex.Unlock()
 
-	_ = req // req is unused until the pipeline is implemented.
+	// Run the pipeline on a background goroutine so this call returns at once.
+	go runCompression(ctx, req)
+
 	return map[string]string{"status": "running", "message": "Compression started"}
 }
 

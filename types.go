@@ -181,6 +181,25 @@ type CompressionRequest struct {
 }
 
 // =============================================================================
+// ImageResult — one row of the final compression report
+// =============================================================================
+
+// ImageResult records what actually happened to a single media part during a
+// compression run. The frontend renders one report row per ImageResult.
+type ImageResult struct {
+	// PartName is the media part processed (original name).
+	PartName string `json:"partName"`
+
+	// Action is the act* label of what was done (e.g. "png->jpeg", "kept").
+	Action string `json:"action"`
+
+	// BeforeBytes / AfterBytes are the part's size before and after. When the
+	// part was kept unchanged the two are equal.
+	BeforeBytes int64 `json:"beforeBytes"`
+	AfterBytes  int64 `json:"afterBytes"`
+}
+
+// =============================================================================
 // ProgressResult — the value returned by GetProgress
 // =============================================================================
 
@@ -206,6 +225,17 @@ type ProgressResult struct {
 	// OutputPath is the path of the written <name>_compressed.pptx, set when
 	// State becomes "done".
 	OutputPath string `json:"outputPath"`
+
+	// FileBytesBefore / FileBytesAfter are the whole-file sizes on disk (source
+	// vs. output), set when State becomes "done". These drive the report card's
+	// headline "X MB → Y MB" figure, which includes non-media parts and zip
+	// overhead, unlike the per-media BytesBefore/BytesAfter running totals.
+	FileBytesBefore int64 `json:"fileBytesBefore"`
+	FileBytesAfter  int64 `json:"fileBytesAfter"`
+
+	// Results is one row per processed media part, accumulated as the run
+	// proceeds and complete when State is "done". Doubles as the per-file log.
+	Results []ImageResult `json:"results"`
 
 	// Errors collects per-image or fatal error messages encountered during the
 	// run. A non-empty list does not necessarily mean the whole job failed.
