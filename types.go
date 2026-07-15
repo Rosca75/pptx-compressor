@@ -100,11 +100,22 @@ type AnalysisResult struct {
 	// Media is one entry per part under ppt/media/, in a stable order.
 	Media []MediaInfo `json:"media"`
 
+	// FileBytes is the size on disk of the whole .pptx (all parts + zip overhead).
+	FileBytes int64 `json:"fileBytes"`
+
 	// TotalBytes is the summed current size of all media parts.
 	TotalBytes int64 `json:"totalBytes"`
 
-	// EstimatedBytes is the summed predicted size after compression.
+	// EstimatedBytes is the summed predicted size of all media parts after
+	// compression (the estimate; the real numbers come from the run).
 	EstimatedBytes int64 `json:"estimatedBytes"`
+
+	// UnusedCount is how many media parts have a reference count of zero.
+	UnusedCount int `json:"unusedCount"`
+
+	// HasEmbeddedFonts is true when the deck embeds fonts (ppt/fonts/*.fntdata),
+	// which the "strip fonts" option can remove.
+	HasEmbeddedFonts bool `json:"hasEmbeddedFonts"`
 
 	// Error is a human-readable message if analysis failed; empty on success.
 	Error string `json:"error"`

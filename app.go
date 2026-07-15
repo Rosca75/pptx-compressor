@@ -24,9 +24,11 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"sync"
 
-	// Wails runtime — used for native dialogs and OS integration once
-	// implemented. Referenced here so the import contract is fixed early.
+	// Wails runtime — used for native dialogs and OS integration.
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -34,6 +36,14 @@ import (
 // exposed to the frontend JavaScript as window.go.main.App.MethodName().
 type App struct {
 	ctx context.Context // Wails context; available after startup().
+
+	// mu guards the cached analysis below. Analysis runs on one goroutine and
+	// GetImagePreview may run on another, so the shared package is protected.
+	mu sync.Mutex
+
+	// analyzed holds the most recently analysed package, kept in memory so
+	// GetImagePreview can decode a thumbnail without re-reading the file.
+	analyzed *PptxFile
 }
 
 // NewApp creates and returns a new App instance. Called from main.go.
@@ -55,12 +65,14 @@ func (a *App) startup(ctx context.Context) {
 // and returns the absolute path of the chosen .pptx, or an empty string if the
 // user cancelled.
 //
-// FUTURE CONTRACT: call wailsRuntime.OpenFileDialog with a
-// "PowerPoint (*.pptx)" file filter and return the selected path.
+// It opens the native OS "open file" dialog via the Wails runtime.
 func (a *App) SelectPptxFile() (string, error) {
-	// STUB: real implementation opens a native dialog. Return empty for now.
-	_ = wailsRuntime.OpenDialogOptions{} // keep the runtime import wired in
-	return "", nil
+	return wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "Select a PowerPoint file",
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: "PowerPoint (*.pptx)", Pattern: "*.pptx"},
+		},
+	})
 }
 
 // =============================================================================
@@ -71,14 +83,46 @@ func (a *App) SelectPptxFile() (string, error) {
 // inventories every media part under ppt/media/, and returns an AnalysisResult
 // describing each image and the estimated savings.
 //
-// FUTURE CONTRACT: open the archive, list ppt/media/ parts, decode each image
-// to read format/dimensions/alpha, count references across the .rels graph, and
-// compute a proposed action + estimated size per part. Never modifies the file.
+// It opens the archive, builds the relationship graph, inventories every media
+// part, and computes an estimated post-compression size using the default
+// (Balanced) options. The opened package is cached so GetImagePreview can serve
+// thumbnails without re-reading the file. The source file is never modified.
 func (a *App) AnalyzePptx(path string) AnalysisResult {
-	// STUB: return an empty, non-error inventory so the table renders.
+	p, err := OpenPptx(path)
+	if err != nil {
+		return AnalysisResult{Path: path, Media: []MediaInfo{}, Error: err.Error()}
+	}
+	if err := p.BuildRelsIndex(); err != nil {
+		return AnalysisResult{Path: path, Media: []MediaInfo{}, Error: err.Error()}
+	}
+
+	opts := defaultAnalysisOptions()
+	media := AnalyzeMedia(p, opts)
+
+	// Aggregate totals for the summary row.
+	var totalMedia, totalEst int64
+	var unused int
+	for _, m := range media {
+		totalMedia += m.Bytes
+		totalEst += m.EstimatedBytes
+		if m.RefCount == 0 {
+			unused++
+		}
+	}
+
+	// Cache the package for subsequent preview requests.
+	a.mu.Lock()
+	a.analyzed = p
+	a.mu.Unlock()
+
 	return AnalysisResult{
-		Path:  path,
-		Media: []MediaInfo{},
+		Path:             path,
+		Media:            media,
+		FileBytes:        fileSize(path),
+		TotalBytes:       totalMedia,
+		EstimatedBytes:   totalEst,
+		UnusedCount:      unused,
+		HasEmbeddedFonts: hasEmbeddedFonts(p),
 	}
 }
 
@@ -149,12 +193,26 @@ func (a *App) CancelCompression() map[string]string {
 //	const b64 = await App.GetImagePreview(partName);
 //	if (b64) img.src = "data:image/png;base64," + b64;
 //
-// FUTURE CONTRACT: read the part from the currently-analysed archive, decode
-// and downscale it to a small preview, and return the encoded bytes.
+// It reads the part from the cached analysed package, decodes it, downscales it
+// to a small thumbnail, and returns a base64-encoded JPEG (no data: prefix).
 func (a *App) GetImagePreview(partName string) string {
-	// STUB: no preview available yet.
-	_ = partName
-	return ""
+	a.mu.Lock()
+	p := a.analyzed
+	a.mu.Unlock()
+	if p == nil {
+		return ""
+	}
+
+	e := p.entry(partName)
+	if e == nil || !isRasterFormat(detectFormat(e.data)) {
+		return "" // only raster parts have previews
+	}
+
+	b64, err := thumbnailBase64(e.data, 160)
+	if err != nil {
+		return ""
+	}
+	return b64
 }
 
 // =============================================================================
@@ -165,10 +223,18 @@ func (a *App) GetImagePreview(partName string) string {
 // Finder on macOS). Called after a successful compression so the user can find
 // the <name>_compressed.pptx.
 //
-// FUTURE CONTRACT: open the containing folder (and ideally select the file)
-// using the platform file manager.
+// It asks the OS to reveal the file (or its containing folder) in the native
+// file manager via the Wails browser-open runtime.
 func (a *App) OpenOutputFolder(path string) error {
-	// STUB: no-op until implemented.
-	_ = path
+	if path == "" {
+		return fmt.Errorf("no path to open")
+	}
+	// Open the containing directory. wailsRuntime.BrowserOpenURL hands the path
+	// to the OS, which opens it in the default file manager.
+	dir := path
+	if i := strings.LastIndexAny(path, `/\`); i >= 0 {
+		dir = path[:i]
+	}
+	wailsRuntime.BrowserOpenURL(a.ctx, dir)
 	return nil
 }
