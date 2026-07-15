@@ -9,6 +9,7 @@ import { apiStartCompression, apiGetProgress, apiCancelCompression } from './api
 import { readOptions } from './options.js';
 import { showToast } from './components.js';
 import { renderReport } from './report.js';
+import { formatBytes } from './helpers.js';
 
 const POLL_MS = 500;
 
@@ -90,7 +91,18 @@ function updateProgressUI(p) {
   if (!p) return;
   const pct = p.totalCount > 0 ? Math.round((p.processedCount / p.totalCount) * 100) : 0;
   document.getElementById('progress-fill').style.width = pct + '%';
-  document.getElementById('progress-phase').textContent = p.currentFile || 'Compressing…';
+
+  // Show the current file (trimmed of the ppt/media/ prefix) being processed.
+  const current = (p.currentFile || '').replace(/^ppt\/media\//, '');
+  document.getElementById('progress-phase').textContent = current
+    ? 'Compressing ' + current + '…'
+    : 'Compressing…';
+
+  // Running bytes saved so far (before − after over processed parts).
+  const saved = (p.bytesBefore || 0) - (p.bytesAfter || 0);
+  const savedEl = document.getElementById('progress-saved');
+  if (savedEl) savedEl.textContent = saved > 0 ? 'saved ' + formatBytes(saved) : '';
+
   document.getElementById('progress-counts').textContent =
     (p.processedCount || 0) + ' / ' + (p.totalCount || 0);
 }

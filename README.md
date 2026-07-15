@@ -8,8 +8,9 @@ Point it at a `.pptx`, review an inventory of every image inside it with an
 estimated size saving, tune the options, and produce a new
 `<name>_compressed.pptx` next to the original.
 
-> **Status:** early skeleton. The UI shell, project structure and CI are in
-> place; the compression engine is being built.
+> **Status:** v0.1.0 — the compression engine is complete: container rewriting,
+> media analysis, the decision matrix, the jpegli/PNG/WebP encoders, the
+> worker-pool pipeline, and the full analysis/options/report UI.
 
 ---
 
@@ -67,8 +68,8 @@ WebView2 ships with Windows 10/11.
 
 ### Build from source
 
-Prerequisites: **Go 1.24+**, the **Wails v2 CLI**, and **Node.js 20+** (used by
-the Wails toolchain).
+Prerequisites: **Go 1.25+** (required by the jpegli encoder), the **Wails v2
+CLI**, and **Node.js 20+** (used by the Wails toolchain).
 
 ```bash
 # Install the Wails CLI once
@@ -103,6 +104,17 @@ go build ./...
 | **Remove unused media parts** | Drops images no slide references. |
 | **Strip embedded fonts** | Removes embedded font parts to save space. |
 | **Per-image skip/remove** | Override the plan for a single image from the table. |
+
+### Preset defaults
+
+Presets seed the sliders and format toggles; any control you touch afterwards
+overrides the preset.
+
+| Preset | JPEG quality | Max longest edge | Opaque PNG → JPEG | Quantize transparent PNG |
+|---|---|---|---|---|
+| **Light** | 90 | 2560 px | off | off |
+| **Balanced** (default) | 82 | 1920 px | on | off |
+| **Aggressive** | 72 | 1440 px | on | on |
 
 ---
 

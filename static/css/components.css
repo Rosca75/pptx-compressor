@@ -122,3 +122,58 @@ input:disabled, select:disabled { background: var(--bg-subtle); color: var(--tex
 }
 .confirm-box p { margin-bottom: var(--space-md); }
 .btn-row { display: flex; gap: var(--space-sm); justify-content: flex-end; }
+
+/* ---------------------------------------------------------------------------
+   WebP compatibility warning (options panel)
+--------------------------------------------------------------------------- */
+.option-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+  padding: var(--space-sm);
+  background: rgba(245,166,35,0.12);
+  border-radius: var(--radius);
+  color: var(--warning);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.option-warning svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 2px; }
+
+/* ---------------------------------------------------------------------------
+   Report card details
+--------------------------------------------------------------------------- */
+.report-headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin: var(--space-md) 0;
+  font-size: 1.4rem;
+  font-weight: var(--font-weight-semi);
+}
+.report-headline .report-before { color: var(--text-light); }
+.report-headline .report-after  { color: var(--primary); }
+.report-headline .report-pct {
+  margin-left: auto;
+  color: var(--success);
+  font-size: 1rem;
+  background: rgba(80,200,120,0.12);
+  padding: 2px var(--space-sm);
+  border-radius: 999px;
+}
+.report-path { font-size: var(--font-size-small); color: var(--text-light); margin-bottom: var(--space-md); }
+.report-path code { font-family: var(--font-mono); }
+.report-table { margin: var(--space-md) 0; }
+.report-errors {
+  margin: var(--space-md) 0;
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(231,76,60,0.08);
+  border-radius: var(--radius);
+  font-size: var(--font-size-small);
+  color: var(--danger);
+}
+.report-errors ul { margin: var(--space-xs) 0 0 var(--space-md); }
+
+/* Progress meta (saved + counts) sits at the right of the progress header. */
+.progress-meta { display: inline-flex; gap: var(--space-md); align-items: baseline; }
+#progress-saved { color: var(--success); font-weight: var(--font-weight-semi); }

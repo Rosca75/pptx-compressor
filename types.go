@@ -100,11 +100,22 @@ type AnalysisResult struct {
 	// Media is one entry per part under ppt/media/, in a stable order.
 	Media []MediaInfo `json:"media"`
 
+	// FileBytes is the size on disk of the whole .pptx (all parts + zip overhead).
+	FileBytes int64 `json:"fileBytes"`
+
 	// TotalBytes is the summed current size of all media parts.
 	TotalBytes int64 `json:"totalBytes"`
 
-	// EstimatedBytes is the summed predicted size after compression.
+	// EstimatedBytes is the summed predicted size of all media parts after
+	// compression (the estimate; the real numbers come from the run).
 	EstimatedBytes int64 `json:"estimatedBytes"`
+
+	// UnusedCount is how many media parts have a reference count of zero.
+	UnusedCount int `json:"unusedCount"`
+
+	// HasEmbeddedFonts is true when the deck embeds fonts (ppt/fonts/*.fntdata),
+	// which the "strip fonts" option can remove.
+	HasEmbeddedFonts bool `json:"hasEmbeddedFonts"`
 
 	// Error is a human-readable message if analysis failed; empty on success.
 	Error string `json:"error"`
@@ -170,6 +181,25 @@ type CompressionRequest struct {
 }
 
 // =============================================================================
+// ImageResult — one row of the final compression report
+// =============================================================================
+
+// ImageResult records what actually happened to a single media part during a
+// compression run. The frontend renders one report row per ImageResult.
+type ImageResult struct {
+	// PartName is the media part processed (original name).
+	PartName string `json:"partName"`
+
+	// Action is the act* label of what was done (e.g. "png->jpeg", "kept").
+	Action string `json:"action"`
+
+	// BeforeBytes / AfterBytes are the part's size before and after. When the
+	// part was kept unchanged the two are equal.
+	BeforeBytes int64 `json:"beforeBytes"`
+	AfterBytes  int64 `json:"afterBytes"`
+}
+
+// =============================================================================
 // ProgressResult — the value returned by GetProgress
 // =============================================================================
 
@@ -195,6 +225,17 @@ type ProgressResult struct {
 	// OutputPath is the path of the written <name>_compressed.pptx, set when
 	// State becomes "done".
 	OutputPath string `json:"outputPath"`
+
+	// FileBytesBefore / FileBytesAfter are the whole-file sizes on disk (source
+	// vs. output), set when State becomes "done". These drive the report card's
+	// headline "X MB → Y MB" figure, which includes non-media parts and zip
+	// overhead, unlike the per-media BytesBefore/BytesAfter running totals.
+	FileBytesBefore int64 `json:"fileBytesBefore"`
+	FileBytesAfter  int64 `json:"fileBytesAfter"`
+
+	// Results is one row per processed media part, accumulated as the run
+	// proceeds and complete when State is "done". Doubles as the per-file log.
+	Results []ImageResult `json:"results"`
 
 	// Errors collects per-image or fatal error messages encountered during the
 	// run. A non-empty list does not necessarily mean the whole job failed.
