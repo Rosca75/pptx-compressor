@@ -1,0 +1,143 @@
+/* layout.css — The 3-zone CSS grid: top bar, main area, options panel. */
+
+.app-layout {
+  display: grid;
+  grid-template-areas:
+    "topbar  topbar"
+    "main    options";
+  grid-template-columns: 1fr 300px;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+
+/* ---------------------------------------------------------------------------
+   Zone B — Top Bar
+--------------------------------------------------------------------------- */
+.topbar {
+  grid-area: topbar;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-md) var(--space-lg);
+  box-shadow: var(--shadow);
+  z-index: 2;
+}
+
+.topbar-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+}
+
+.topbar-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-weight: var(--font-weight-semi);
+  font-size: 1.1rem;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+.topbar-field { display: flex; flex-direction: column; gap: var(--space-xs); }
+.topbar-field label { font-size: var(--font-size-small); color: var(--text-light); }
+.topbar-file { flex: 1; min-width: 280px; }
+
+.input-group { display: flex; gap: var(--space-sm); }
+.input-group input { flex: 1; }
+
+.topbar-buttons { display: flex; align-items: center; gap: var(--space-sm); }
+
+/* Progress bar row */
+.progress-section { margin-top: var(--space-md); }
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-small);
+  color: var(--text-light);
+  margin-bottom: var(--space-xs);
+}
+.progress-track {
+  height: 8px;
+  background: var(--bg-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--primary-light);
+  transition: width var(--transition);
+}
+
+/* ---------------------------------------------------------------------------
+   Zone D — Main Area
+--------------------------------------------------------------------------- */
+.main-area {
+  grid-area: main;
+  overflow: auto;
+  padding: var(--space-lg);
+  background: var(--bg-subtle);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-light);
+  text-align: center;
+  gap: var(--space-md);
+}
+.empty-icon { color: var(--border); }
+.empty-icon svg { width: 64px; height: 64px; }
+.empty-state p { max-width: 420px; }
+
+/* ---------------------------------------------------------------------------
+   Zone C — Options Panel
+--------------------------------------------------------------------------- */
+.options-panel {
+  grid-area: options;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  padding: var(--space-lg);
+  overflow-y: auto;
+}
+
+.panel-header {
+  font-weight: var(--font-weight-semi);
+  font-size: 1rem;
+  color: var(--primary);
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border);
+}
+
+.option-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+.option-label {
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semi);
+  color: var(--text);
+}
+
+.range-group { display: flex; align-items: center; gap: var(--space-sm); }
+.range-group input[type="range"] { flex: 1; }
+.range-value {
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-light);
+}
+
+.option-note {
+  font-size: var(--font-size-small);
+  color: var(--text-light);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-md);
+}

@@ -1,0 +1,57 @@
+/* table.css — The media analysis table (Zone D). */
+
+.media-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  font-size: var(--font-size-small);
+}
+
+.media-table thead th {
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--primary);
+  color: #fff;
+  font-weight: var(--font-weight-semi);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+
+.media-table tbody td {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.media-table tbody tr:hover { background: var(--bg-subtle); }
+
+/* Part name shown in monospace so image paths line up. */
+.media-table td.part-name {
+  font-family: var(--font-mono);
+  color: var(--text-light);
+}
+
+/* Numeric columns are right-aligned with tabular figures. */
+.media-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Action badges (proposed action column). */
+.action-badge {
+  display: inline-block;
+  padding: 2px var(--space-sm);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semi);
+  background: var(--bg-subtle);
+  color: var(--text-light);
+}
+.action-badge.recompress { background: rgba(74,144,226,0.15); color: var(--primary-light); }
+.action-badge.convert    { background: rgba(80,200,120,0.15); color: var(--success); }
+.action-badge.skip       { background: rgba(245,166,35,0.15); color: var(--warning); }
+.action-badge.remove     { background: rgba(231,76,60,0.15);  color: var(--danger); }

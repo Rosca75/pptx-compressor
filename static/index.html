@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PPTX Compressor — Shrink PowerPoint files</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/feather-icons"></script>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/table.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+<body>
+
+<!-- 3-zone grid: top bar, main analysis area, right-hand options panel. -->
+<div class="app-layout">
+
+  <!-- ===================================================================== -->
+  <!-- Zone B — Top Bar: file picker + primary actions + progress bar        -->
+  <!-- ===================================================================== -->
+  <div class="topbar">
+    <div class="topbar-row">
+      <span class="topbar-logo"><i data-feather="minimize-2"></i> PPTX Compressor</span>
+
+      <!-- File picker: shows the selected .pptx path -->
+      <div class="topbar-field topbar-file">
+        <label for="pptx-path">PowerPoint file</label>
+        <div class="input-group">
+          <input type="text" id="pptx-path" placeholder="Select a .pptx file…" readonly>
+          <button class="btn btn-outline btn-sm" id="select-btn">
+            <i data-feather="folder"></i> Open…
+          </button>
+        </div>
+      </div>
+
+      <!-- Primary actions -->
+      <div class="topbar-buttons">
+        <button class="btn btn-primary" id="analyze-btn" disabled>
+          <i data-feather="search"></i> Analyze
+        </button>
+        <button class="btn btn-primary" id="compress-btn" disabled>
+          <i data-feather="minimize-2"></i> Compress
+        </button>
+        <button class="btn btn-danger" id="cancel-btn" style="display:none">
+          <i data-feather="x-circle"></i> Cancel
+        </button>
+      </div>
+    </div>
+
+    <!-- Progress bar (visible during a compression run) -->
+    <div class="progress-section" id="progress-section" style="display:none">
+      <div class="progress-header">
+        <span id="progress-phase">Compressing…</span>
+        <span id="progress-counts">0 / 0</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- Zone D — Main Area: analysis table + before/after report              -->
+  <!-- ===================================================================== -->
+  <div class="main-area">
+    <div id="results-area">
+      <!-- Empty state before any analysis -->
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon"><i data-feather="image"></i></div>
+        <p>Open a <strong>.pptx</strong> file and click <strong>Analyze</strong>
+           to inventory its embedded images and estimate savings.</p>
+      </div>
+
+      <!-- Analysis table (populated by table.js after analysis) -->
+      <table class="media-table" id="media-table" style="display:none">
+        <thead>
+          <tr>
+            <th>Part</th>
+            <th>Format</th>
+            <th>Dimensions</th>
+            <th>Size</th>
+            <th>Alpha</th>
+            <th>Refs</th>
+            <th>Proposed action</th>
+            <th>Est. size</th>
+          </tr>
+        </thead>
+        <tbody id="media-tbody"><!-- TODO: rows rendered by table.js --></tbody>
+      </table>
+
+      <!-- Before/after report (shown when a run completes) -->
+      <div class="report-card" id="report-card" style="display:none">
+        <!-- TODO: rendered by report.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- Zone C — Options Panel: compression settings (right side)             -->
+  <!-- ===================================================================== -->
+  <div class="options-panel">
+    <div class="panel-header">Options</div>
+
+    <!-- Group: preset -->
+    <div class="option-group">
+      <label class="option-label" for="opt-preset">Compression preset</label>
+      <select id="opt-preset" disabled>
+        <option value="light">Light</option>
+        <option value="balanced" selected>Balanced</option>
+        <option value="aggressive">Aggressive</option>
+      </select>
+    </div>
+
+    <!-- Group: JPEG quality -->
+    <div class="option-group">
+      <label class="option-label" for="opt-jpeg-quality">JPEG quality</label>
+      <div class="range-group">
+        <input type="range" id="opt-jpeg-quality" min="1" max="100" value="82" disabled>
+        <span class="range-value" id="opt-jpeg-quality-value">82</span>
+      </div>
+    </div>
+
+    <!-- Group: max longest edge -->
+    <div class="option-group">
+      <label class="option-label" for="opt-max-edge">Max longest edge (px, 0 = no limit)</label>
+      <input type="number" id="opt-max-edge" value="0" min="0" disabled>
+    </div>
+
+    <!-- Group: minimum size threshold -->
+    <div class="option-group">
+      <label class="option-label" for="opt-min-size">Skip images under (KB)</label>
+      <input type="number" id="opt-min-size" value="20" min="0" disabled>
+    </div>
+
+    <!-- Group: format decisions -->
+    <div class="option-group">
+      <div class="option-label">Format decisions</div>
+      <label class="checkbox-label">
+        <input type="checkbox" id="opt-convert-opaque-png" checked disabled>
+        Convert opaque PNG → JPEG
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="opt-quantize-transparent-png" checked disabled>
+        Quantize transparent PNG (palette)
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="opt-use-webp" disabled>
+        Output WebP (M365 ≥ 2402 only)
+      </label>
+    </div>
+
+    <!-- Group: cleanup -->
+    <div class="option-group">
+      <div class="option-label">Cleanup</div>
+      <label class="checkbox-label">
+        <input type="checkbox" id="opt-remove-unused-media" checked disabled>
+        Remove unused media parts
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="opt-strip-embedded-fonts" disabled>
+        Strip embedded fonts
+      </label>
+    </div>
+
+    <p class="option-note">
+      Per-image skip/remove overrides are set from the table.
+      The original file is never modified.
+    </p>
+  </div>
+
+</div>
+
+<div id="toast-container"></div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

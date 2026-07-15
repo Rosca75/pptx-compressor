@@ -1,0 +1,124 @@
+/* components.css — Buttons, form controls, badges, toast, confirm dialog. */
+
+/* ---------------------------------------------------------------------------
+   Buttons
+--------------------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semi);
+  cursor: pointer;
+  transition: background var(--transition), opacity var(--transition);
+  white-space: nowrap;
+}
+.btn svg { width: 16px; height: 16px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:not(:disabled):hover { background: var(--primary-light); }
+
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:not(:disabled):hover { opacity: 0.85; }
+
+.btn-outline {
+  background: var(--bg);
+  color: var(--primary);
+  border: 1px solid var(--border);
+}
+.btn-outline:not(:disabled):hover { background: var(--bg-subtle); }
+
+.btn-sm { padding: var(--space-xs) var(--space-sm); font-size: var(--font-size-small); }
+
+/* ---------------------------------------------------------------------------
+   Form controls
+--------------------------------------------------------------------------- */
+input[type="text"],
+input[type="number"],
+select {
+  padding: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: var(--font-size-body);
+  color: var(--text);
+  background: var(--bg);
+}
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--primary-light);
+}
+input:disabled, select:disabled { background: var(--bg-subtle); color: var(--text-light); }
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-small);
+  color: var(--text);
+  cursor: pointer;
+}
+.checkbox-label input { cursor: pointer; }
+
+/* ---------------------------------------------------------------------------
+   Report card (before/after summary)
+--------------------------------------------------------------------------- */
+.report-card {
+  background: var(--bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: var(--space-lg);
+  margin-top: var(--space-lg);
+}
+
+/* ---------------------------------------------------------------------------
+   Toast notifications
+--------------------------------------------------------------------------- */
+#toast-container {
+  position: fixed;
+  bottom: var(--space-lg);
+  right: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  z-index: 1000;
+}
+.toast {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius);
+  color: #fff;
+  box-shadow: var(--shadow-md);
+  font-size: var(--font-size-small);
+  opacity: 1;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+.toast.removing { opacity: 0; transform: translateY(8px); }
+
+/* ---------------------------------------------------------------------------
+   Confirmation dialog
+--------------------------------------------------------------------------- */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+}
+.confirm-box {
+  background: var(--bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-lg);
+  max-width: 420px;
+}
+.confirm-box p { margin-bottom: var(--space-md); }
+.btn-row { display: flex; gap: var(--space-sm); justify-content: flex-end; }
