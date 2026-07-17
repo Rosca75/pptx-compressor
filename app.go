@@ -101,7 +101,7 @@ func (a *App) AnalyzePptx(path string) AnalysisResult {
 
 	// Aggregate totals for the summary row.
 	var totalMedia, totalEst int64
-	var unused int
+	var unused, videos int
 	for _, m := range media {
 		totalMedia += m.Bytes
 		totalEst += m.EstimatedBytes
@@ -110,6 +110,9 @@ func (a *App) AnalyzePptx(path string) AnalysisResult {
 		// merely RefCount == 0. See usageLabel / MediaPlacement.
 		if isUnusedUsage(m.Usage) {
 			unused++
+		}
+		if m.IsVideo {
+			videos++
 		}
 	}
 
@@ -125,6 +128,8 @@ func (a *App) AnalyzePptx(path string) AnalysisResult {
 		TotalBytes:       totalMedia,
 		EstimatedBytes:   totalEst,
 		UnusedCount:      unused,
+		VideoCount:       videos,
+		FfmpegAvailable:  ffmpegAvailable(),
 		HasEmbeddedFonts: hasEmbeddedFonts(p),
 	}
 }

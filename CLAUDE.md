@@ -42,11 +42,15 @@ pptx-compressor/
 ├── analyzer.go       284 lines   media inventory + savings estimation + presets
 ├── compressor.go     496 lines   worker-pool compression pipeline + post-processing
 ├── codec.go          642 lines   format detection, alpha, encoders, decision matrix, median-cut
+├── video.go                      video detection, placeholder MP4, ffmpeg MP4 recompression
+├── video_windows.go              Windows-only: hide ffmpeg's console window (+.exe suffix)
+├── video_other.go                non-Windows no-op counterparts
 ├── resize.go          59 lines   CatmullRom downscaling
 ├── pptx_test.go      293 lines   container-layer tests (synthetic fixtures)
 ├── codec_test.go     143 lines   detection / alpha / analyzer tests
 ├── decision_test.go  174 lines   decision-matrix and encoder tests
 ├── compressor_test.go 421 lines  end-to-end pipeline / scenario tests
+├── video_test.go                 video detection / decision / slide-order tests
 ├── wails.json                    Wails config (name, author, empty frontend:* fields)
 ├── go.mod / go.sum
 ├── .github/workflows/
@@ -226,6 +230,11 @@ the user's data.
    `<name>_compressed.pptx` written next to the original.
 6. **Always skip vectors and animated GIFs.** EMF, WMF and SVG parts are vector
    graphics; animated GIFs are multi-frame. These are never re-encoded.
+   Videos are skipped by the image pipeline too; they are only touched by the
+   opt-in video options — "remove videos" swaps the bytes for a tiny embedded
+   placeholder MP4 (relationships/content types stay intact), and MP4
+   compression shells out to an external `ffmpeg` executable (CGo stays
+   forbidden; without ffmpeg the option is disabled and originals are kept).
 7. **Alpha detection samples the full alpha channel.** Do not trust the format
    or metadata — an RGBA PNG can be entirely opaque (a JPEG-conversion
    candidate). Decide transparency by scanning actual pixels.

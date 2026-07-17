@@ -8,7 +8,7 @@ import { state } from './state.js';
 import { apiSelectPptxFile, apiAnalyzePptx } from './api.js';
 import { showToast } from './components.js';
 import { renderTable } from './table.js';
-import { setOptionsEnabled } from './options.js';
+import { setOptionsEnabled, updateVideoOptions } from './options.js';
 
 /** Wire up the file picker and Analyze button. Called once on init. */
 export function initAnalyze() {
@@ -48,6 +48,9 @@ async function onAnalyze() {
     state.analysis = result;
     renderTable(result);
     setOptionsEnabled(true); // Options panel becomes usable after analysis.
+    // Show/hide the video options AFTER the blanket enable above, so the
+    // MP4-compression select can be re-disabled when ffmpeg is missing.
+    updateVideoOptions(result);
     document.getElementById('compress-btn').disabled = false;
   } catch (e) {
     showToast('Analysis failed: ' + e, 'error');

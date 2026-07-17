@@ -71,6 +71,8 @@ const (
 	actQuantizePng    = "quantize-png"    // transparent PNG → ≤256-color paletted PNG
 	actWebp           = "webp"            // encode WebP (opt-in)
 	actKept           = "kept"            // runtime: re-encode was not smaller, original kept
+	actRemoveVideo    = "remove-video"    // video neutralised to the tiny placeholder MP4
+	actCompressVideo  = "compress-video"  // MP4 re-encoded through ffmpeg
 )
 
 // =============================================================================
@@ -392,6 +394,10 @@ type Action struct {
 
 	// Quantize requests median-cut palette quantization (transparent PNG path).
 	Quantize bool
+
+	// VideoLevel is the ffmpeg compression level name for actCompressVideo
+	// ("light", "balanced", "aggressive" or "extreme"). Empty otherwise.
+	VideoLevel string
 }
 
 // isNoOp reports whether the action means "leave the bytes exactly as they are".
@@ -429,6 +435,19 @@ func DecideAction(m MediaInfo, opts CompressionOptions) Action {
 
 	// Below the minimum size we never touch the image.
 	if m.Bytes < int64(opts.MinSizeKB)*1024 {
+		return Action{Kind: actSkip}
+	}
+
+	// Videos never enter the image paths — they have exactly two options:
+	// neutralise to the placeholder (RemoveVideos) or, for MP4s, re-encode
+	// through ffmpeg at the chosen level. Removal wins over compression.
+	if m.IsVideo {
+		if opts.RemoveVideos {
+			return Action{Kind: actRemoveVideo}
+		}
+		if _, ok := videoLevelFor(opts.VideoCompression); ok && m.IsMp4 {
+			return Action{Kind: actCompressVideo, VideoLevel: strings.ToLower(opts.VideoCompression)}
+		}
 		return Action{Kind: actSkip}
 	}
 

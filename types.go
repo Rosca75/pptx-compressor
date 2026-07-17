@@ -87,10 +87,21 @@ type MediaInfo struct {
 	UsedOnSlide bool `json:"usedOnSlide"`
 
 	// Usage is a short human-readable label describing where the image is
-	// actually placed: e.g. "slide", "layout", "master", "slide, master", or
-	// "unused" / "unused (stale ref)" when it is placed nowhere. Filled in by
-	// the analyzer (see AnalyzeMedia / usageLabel).
+	// actually placed. When the image sits on real slides the label names the
+	// deck pages, e.g. "slide 3" or "slides 2, 5"; otherwise it names the
+	// non-slide location ("layout", "master", ...), or "unused" /
+	// "unused (stale ref)" when it is placed nowhere. Filled in by the
+	// analyzer (see AnalyzeMedia / usageLabel).
 	Usage string `json:"usage"`
+
+	// IsVideo is true when the part's bytes (or, as a fallback, its extension)
+	// identify it as a video file. Videos are never handled by the image
+	// pipeline; they are only touched by the video options (remove / compress).
+	IsVideo bool `json:"isVideo"`
+
+	// IsMp4 is true for MP4-family videos — the only kind the ffmpeg-based
+	// video compression can re-encode. False for e.g. WMV or AVI.
+	IsMp4 bool `json:"isMp4"`
 
 	// ProposedAction is the plan for this part, e.g. "recompress-jpeg",
 	// "png->jpeg", "quantize", "downscale", "skip", "remove". Filled in by the
@@ -127,6 +138,14 @@ type AnalysisResult struct {
 
 	// UnusedCount is how many media parts have a reference count of zero.
 	UnusedCount int `json:"unusedCount"`
+
+	// VideoCount is how many media parts are videos. The frontend only shows
+	// the video options (remove / compress) when this is non-zero.
+	VideoCount int `json:"videoCount"`
+
+	// FfmpegAvailable is true when an ffmpeg executable was found (next to the
+	// app or on PATH). Video COMPRESSION requires it; video REMOVAL does not.
+	FfmpegAvailable bool `json:"ffmpegAvailable"`
 
 	// HasEmbeddedFonts is true when the deck embeds fonts (ppt/fonts/*.fntdata),
 	// which the "strip fonts" option can remove.
@@ -174,6 +193,18 @@ type CompressionOptions struct {
 
 	// StripEmbeddedFonts removes embedded font parts to save additional space.
 	StripEmbeddedFonts bool `json:"stripEmbeddedFonts"`
+
+	// RemoveVideos replaces every embedded video's bytes with a tiny (~2 KB)
+	// placeholder MP4. The part, its relationships and its content type stay
+	// in place so the package cannot break — only the bytes shrink (the slide
+	// keeps showing the video's poster frame). Off by default.
+	RemoveVideos bool `json:"removeVideos"`
+
+	// VideoCompression selects the ffmpeg re-encode level for MP4 videos:
+	// "" or "none" (off), "light", "balanced", "aggressive" or "extreme".
+	// Requires an ffmpeg executable at runtime; ignored when RemoveVideos is
+	// set (removal always wins).
+	VideoCompression string `json:"videoCompression"`
 
 	// ReplaceOriginal overwrites the source .pptx with the compressed result
 	// instead of writing a separate <name>_compressed.pptx alongside it. The
