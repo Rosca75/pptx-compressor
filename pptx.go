@@ -122,6 +122,12 @@ type PptxFile struct {
 	// relsIndex maps a media part name (e.g. "ppt/media/image3.png") to every
 	// relationship that references it. Built by BuildRelsIndex().
 	relsIndex map[string][]relRef
+
+	// slideOrder maps a slide part name (e.g. "ppt/slides/slide2.xml") to its
+	// 1-based position in the deck (the page number the user sees). Built by
+	// BuildRelsIndex() from the presentation's slide list — the slideN.xml
+	// file names do NOT reliably encode deck order (slides get reordered).
+	slideOrder map[string]int
 }
 
 // =============================================================================
@@ -311,6 +317,86 @@ type relRelationship struct {
 	Mode   string `xml:"TargetMode,attr"`
 }
 
+// =============================================================================
+// Slide order — which deck page is each slide part?
+// =============================================================================
+
+// presentationXML mirrors just enough of ppt/presentation.xml to read the
+// ordered slide list. The <p:sldIdLst> children appear in DECK ORDER, and each
+// <p:sldId> carries an r:id attribute naming a relationship in
+// ppt/_rels/presentation.xml.rels that targets the slide part. Field tags use
+// unqualified local names, which encoding/xml matches in any namespace.
+type presentationXML struct {
+	XMLName xml.Name `xml:"presentation"`
+	SldIds  []struct {
+		// RID is the r:id attribute (relationships namespace) of this slide.
+		RID string `xml:"http://schemas.openxmlformats.org/officeDocument/2006/relationships id,attr"`
+	} `xml:"sldIdLst>sldId"`
+}
+
+// buildSlideOrder fills p.slideOrder by walking the presentation's slide list
+// in order and resolving each slide's relationship to its part name. Called
+// from BuildRelsIndex. Failures are non-fatal: with no order information the
+// map stays empty and slidePageNumber falls back to the file-name digits.
+func (p *PptxFile) buildSlideOrder() {
+	p.slideOrder = map[string]int{}
+
+	pres := p.entry("ppt/presentation.xml")
+	rels := p.entry("ppt/_rels/presentation.xml.rels")
+	if pres == nil || rels == nil {
+		return
+	}
+
+	// Parse the ordered slide id list from presentation.xml.
+	var px presentationXML
+	if err := xml.Unmarshal(pres.data, &px); err != nil {
+		return
+	}
+
+	// Parse the presentation's rels so each r:id resolves to a slide part.
+	var rf relsFile
+	if err := xml.Unmarshal(rels.data, &rf); err != nil {
+		return
+	}
+	byID := map[string]string{}
+	base := relsBaseDir(rels.name) // "ppt"
+	for _, rel := range rf.Relationships {
+		byID[rel.Id] = resolveTarget(base, rel.Target)
+	}
+
+	// Deck page N is simply the Nth entry of the slide id list (1-based).
+	page := 0
+	for _, sld := range px.SldIds {
+		part, ok := byID[sld.RID]
+		if !ok {
+			continue
+		}
+		page++
+		p.slideOrder[part] = page
+	}
+}
+
+// slidePageNumber returns the 1-based deck page for a slide part, preferring
+// the authoritative order from presentation.xml and falling back to the digits
+// in the file name ("ppt/slides/slide7.xml" → 7). Returns 0 when the page
+// cannot be determined at all.
+func (p *PptxFile) slidePageNumber(slidePart string) int {
+	if n, ok := p.slideOrder[slidePart]; ok {
+		return n
+	}
+	// Fallback: extract the trailing number from "...slideN.xml".
+	base := strings.TrimSuffix(path.Base(slidePart), ".xml")
+	digits := strings.TrimLeft(base, "slide")
+	n := 0
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return 0
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n
+}
+
 // BuildRelsIndex parses every *.rels file in the package and builds relsIndex:
 // a map from each referenced media part name to the list of relationships that
 // point at it. A media part's reference count is len(relsIndex[partName]).
@@ -322,6 +408,10 @@ type relRelationship struct {
 // "ppt/media/image1.png".
 func (p *PptxFile) BuildRelsIndex() error {
 	p.relsIndex = map[string][]relRef{}
+
+	// Also (re)build the slide-order map: MediaPlacement needs it to translate
+	// slide parts into the deck page numbers shown in the UI.
+	p.buildSlideOrder()
 
 	for _, e := range p.Entries {
 		if !strings.HasSuffix(e.name, ".rels") {
@@ -389,9 +479,15 @@ type PlacementInfo struct {
 	// (an owning ppt/slides/slideN.xml references the relationship's Id).
 	UsedOnSlide bool
 
-	// Locations is the sorted, de-duplicated set of owner kinds where the image
-	// is actually placed: any of "slide", "layout", "master", "notes",
-	// "notes master" or "other". Empty means the image is placed nowhere.
+	// SlideNumbers is the sorted, de-duplicated list of 1-based deck pages
+	// where the image is placed (empty when it appears on no real slide).
+	// These are the page numbers the user sees in PowerPoint's slide panel.
+	SlideNumbers []int
+
+	// Locations is the sorted, de-duplicated set of NON-SLIDE owner kinds
+	// where the image is actually placed: any of "layout", "master", "notes",
+	// "notes master" or "other". Slides are reported via SlideNumbers instead.
+	// Both empty means the image is placed nowhere.
 	Locations []string
 }
 
@@ -401,6 +497,7 @@ type PlacementInfo struct {
 func (p *PptxFile) MediaPlacement(partName string) PlacementInfo {
 	var info PlacementInfo
 	seen := map[string]bool{}
+	seenPage := map[int]bool{}
 
 	for _, ref := range p.relsIndex[partName] {
 		// The part whose .rels file this relationship lives in.
@@ -421,7 +518,14 @@ func (p *PptxFile) MediaPlacement(partName string) PlacementInfo {
 
 		kind := ownerKind(owner)
 		if kind == "slide" {
+			// Slides are reported as deck page numbers, not as a bare "slide"
+			// location — the UI shows exactly which page(s) hold the image.
 			info.UsedOnSlide = true
+			if page := p.slidePageNumber(owner); page > 0 && !seenPage[page] {
+				seenPage[page] = true
+				info.SlideNumbers = append(info.SlideNumbers, page)
+			}
+			continue
 		}
 		if !seen[kind] {
 			seen[kind] = true
@@ -429,6 +533,7 @@ func (p *PptxFile) MediaPlacement(partName string) PlacementInfo {
 		}
 	}
 
+	sort.Ints(info.SlideNumbers)
 	sort.Strings(info.Locations)
 	return info
 }

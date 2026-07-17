@@ -117,7 +117,7 @@ func runCompression(ctx context.Context, req CompressionRequest) {
 				if e == nil {
 					continue
 				}
-				results <- transformPart(e, m, opts)
+				results <- transformPart(ctx, e, m, opts)
 			}
 		}()
 	}
@@ -215,8 +215,9 @@ func runCompression(ctx context.Context, req CompressionRequest) {
 // transformPart decides and performs the re-encode for a single media part and
 // returns a proposal. It reads e.data but never mutates the package. The
 // never-larger guarantee is applied here: if the re-encoded bytes are not
-// smaller, the proposal keeps the original (action "kept").
-func transformPart(e *zipEntry, m MediaInfo, opts CompressionOptions) workResult {
+// smaller, the proposal keeps the original (action "kept"). ctx lets a Cancel
+// press kill a long-running ffmpeg video encode mid-file.
+func transformPart(ctx context.Context, e *zipEntry, m MediaInfo, opts CompressionOptions) workResult {
 	res := workResult{oldName: m.PartName, newName: m.PartName, before: int64(len(e.data))}
 
 	act := DecideAction(m, opts)
@@ -224,6 +225,36 @@ func transformPart(e *zipEntry, m MediaInfo, opts CompressionOptions) workResult
 	switch act.Kind {
 	case actSkip:
 		res.action = actSkip
+		return res
+
+	case actRemoveVideo:
+		// "Remove videos": swap the bytes for the tiny placeholder MP4. The
+		// part name, relationships and content type all stay intact, so the
+		// package cannot break — the slide keeps its (now inert) poster frame.
+		ph := placeholderMP4()
+		if int64(len(ph)) >= res.before {
+			res.action = actSkip // already tiny — nothing to gain
+			return res
+		}
+		res.newData = ph
+		res.action = actRemoveVideo
+		return res
+
+	case actCompressVideo:
+		// MP4 re-encode through the external ffmpeg executable. Any failure
+		// (no ffmpeg, broken file, cancelled) keeps the original bytes.
+		out, err := compressVideoMP4(ctx, e.data, act.VideoLevel)
+		if err != nil {
+			res.err = fmt.Errorf("video %s: %w", m.PartName, err)
+			res.action = actSkip
+			return res
+		}
+		if int64(len(out)) >= res.before {
+			res.action = actKept // never-larger guarantee
+			return res
+		}
+		res.newData = out
+		res.action = actCompressVideo
 		return res
 
 	case actRemove:
@@ -512,6 +543,11 @@ func tinyPlaceholder(ext string) ([]byte, bool) {
 		if err := xtiff.Encode(&buf, transparent, nil); err == nil {
 			return buf.Bytes(), true
 		}
+	case "mp4", "m4v", "mov":
+		// MP4-family videos: the embedded ~2 KB placeholder video (also used
+		// by the global "remove videos" option). PowerPoint stores .mov parts
+		// in the same ISO container family, so the bytes remain valid there.
+		return placeholderMP4(), true
 	}
 	return nil, false
 }

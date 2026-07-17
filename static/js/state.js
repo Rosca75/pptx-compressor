@@ -10,6 +10,12 @@ export const state = {
   /** Latest AnalysisResult from AnalyzePptx (null before first analysis). */
   analysis: null,
 
+  /**
+   * Whether the backend found an ffmpeg executable (from the latest
+   * AnalysisResult). Gates the MP4 video-compression control.
+   */
+  ffmpegAvailable: false,
+
   /** Interval timer ID for polling compression progress (null when idle). */
   pollTimer: null,
 
@@ -34,5 +40,7 @@ export const state = {
     removeUnusedMedia: true,
     stripEmbeddedFonts: false,
     replaceOriginal: false,
+    removeVideos: false,
+    videoCompression: 'none',
   },
 };

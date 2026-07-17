@@ -105,7 +105,7 @@ function rowHtml(m) {
     <td class="select-cell"><input type="checkbox" class="row-select" data-part="${escapeHtml(m.partName)}"${isSel ? ' checked' : ''}></td>
     <td class="thumb-cell"><div class="thumb" data-part="${escapeHtml(m.partName)}"></div></td>
     <td class="part-name" title="${escapeHtml(m.partName)}">${escapeHtml(shortName(m.partName))}</td>
-    <td>${escapeHtml(m.format)}</td>
+    <td>${escapeHtml(m.isVideo ? 'video' : m.format)}</td>
     <td class="num">${formatDimensions(m.width, m.height)}</td>
     <td class="num">${formatBytes(m.bytes)}</td>
     <td>${m.hasAlpha ? 'yes' : '—'}</td>

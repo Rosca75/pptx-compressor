@@ -32,6 +32,12 @@ function els() {
     webpWarning:   document.getElementById('webp-warning'),
     outputMode:    document.querySelectorAll('input[name="opt-output-mode"]'),
     replaceWarning: document.getElementById('replace-warning'),
+    videoGroup:    document.getElementById('video-options'),
+    videoCount:    document.getElementById('video-count'),
+    removeVideos:  document.getElementById('opt-remove-videos'),
+    videoCompression: document.getElementById('opt-video-compression'),
+    removeVideosWarning: document.getElementById('remove-videos-warning'),
+    ffmpegWarning: document.getElementById('ffmpeg-warning'),
   };
 }
 
@@ -76,8 +82,70 @@ export function initOptions() {
     });
   }
 
+  // Ticking "Remove videos" shows its warning and greys out the compression
+  // select — removal always wins over compression, so offering both at once
+  // would be misleading.
+  if (e.removeVideos) {
+    e.removeVideos.addEventListener('change', () => {
+      state.options.removeVideos = e.removeVideos.checked;
+      if (e.removeVideosWarning) {
+        e.removeVideosWarning.style.display = e.removeVideos.checked ? '' : 'none';
+      }
+      syncVideoCompressionEnabled();
+    });
+  }
+
+  if (e.videoCompression) {
+    e.videoCompression.addEventListener('change', () => {
+      state.options.videoCompression = e.videoCompression.value;
+    });
+  }
+
   // Reflect the initial preset defaults into the controls.
   if (e.preset) applyPreset(e.preset.value);
+}
+
+/**
+ * Show or hide the Videos option group based on the latest analysis.
+ * Called by analyze.js after each successful analysis (and AFTER
+ * setOptionsEnabled, which blanket-enables every panel control).
+ *
+ * The group only appears when the deck actually contains videos, so users
+ * without videos never see the extra controls. The compression select is
+ * additionally gated on ffmpeg being installed; removal works without it.
+ * @param {Object} analysis - AnalysisResult { videoCount, ffmpegAvailable }.
+ */
+export function updateVideoOptions(analysis) {
+  const e = els();
+  const count = (analysis && analysis.videoCount) || 0;
+  state.ffmpegAvailable = !!(analysis && analysis.ffmpegAvailable);
+
+  if (e.videoGroup) e.videoGroup.style.display = count > 0 ? '' : 'none';
+  if (e.videoCount) e.videoCount.textContent = String(count);
+
+  if (count === 0) {
+    // No videos: make sure stale choices from a previous file don't linger.
+    if (e.removeVideos) e.removeVideos.checked = false;
+    if (e.videoCompression) e.videoCompression.value = 'none';
+    if (e.removeVideosWarning) e.removeVideosWarning.style.display = 'none';
+    state.options.removeVideos = false;
+    state.options.videoCompression = 'none';
+    return;
+  }
+
+  if (e.ffmpegWarning) e.ffmpegWarning.style.display = state.ffmpegAvailable ? 'none' : '';
+  syncVideoCompressionEnabled();
+}
+
+/**
+ * The MP4-compression select is usable only when ffmpeg exists AND
+ * "Remove videos" is not ticked (removal makes compression moot).
+ */
+function syncVideoCompressionEnabled() {
+  const e = els();
+  if (!e.videoCompression) return;
+  const removing = !!(e.removeVideos && e.removeVideos.checked);
+  e.videoCompression.disabled = removing || !state.ffmpegAvailable;
 }
 
 /**
@@ -135,6 +203,8 @@ export function readOptions() {
     useWebp: !!(e.useWebp && e.useWebp.checked),
     removeUnusedMedia: !!(e.removeUnused && e.removeUnused.checked),
     stripEmbeddedFonts: !!(e.stripFonts && e.stripFonts.checked),
+    removeVideos: !!(e.removeVideos && e.removeVideos.checked),
+    videoCompression: (e.videoCompression && e.videoCompression.value) || 'none',
     replaceOriginal: selectedOutputMode(e.outputMode) === 'replace',
     perImageOverrides: { ...state.overrides },
   };

@@ -316,7 +316,9 @@ func TestMediaPlacement(t *testing.T) {
 		wantOnSlide bool
 		wantUsage   string
 	}{
-		{"ppt/media/used.png", true, "slide"},
+		// The fixture has no presentation.xml, so the page number comes from
+		// the file-name fallback (slide1.xml → deck page 1).
+		{"ppt/media/used.png", true, "slide 1"},
 		{"ppt/media/logo.png", false, "layout"},
 		{"ppt/media/stale.png", false, "unused (stale ref)"},
 		{"ppt/media/orphan.png", false, "unused"},

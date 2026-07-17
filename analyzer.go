@@ -20,6 +20,7 @@ package main
 
 import (
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -146,6 +147,12 @@ func AnalyzeMedia(p *PptxFile, opts CompressionOptions) []MediaInfo {
 		format := detectFormat(e.data)
 		info.Format = format
 
+		// Classify videos (bytes first, extension as fallback) so the video
+		// options (remove / ffmpeg compression) know their targets, and mark
+		// MP4s — the only kind the ffmpeg re-encode accepts.
+		info.IsVideo = isVideoPart(name, e.data)
+		info.IsMp4 = info.IsVideo && isMP4Data(e.data)
+
 		// Dimensions and alpha only make sense for rasters we can decode.
 		if isRasterFormat(format) {
 			if cfg, err := decodeConfig(e.data); err == nil {
@@ -171,14 +178,36 @@ func AnalyzeMedia(p *PptxFile, opts CompressionOptions) []MediaInfo {
 // usageLabel turns a reference count plus a placement result into the short
 // label shown in the analysis table's "Usage" column.
 //
-//   - Placed somewhere        -> the sorted location list, e.g. "slide" or
-//     "slide, master" or "layout".
+//   - Placed on real slides    -> the deck page number(s), e.g. "slide 3" or
+//     "slides 2, 5" (plus any non-slide locations, e.g. "slide 3, master").
+//   - Placed only off-slide    -> the sorted location list, e.g. "layout".
 //   - Referenced but placed
 //     nowhere (stale rels)     -> "unused (stale ref)" — present but invisible.
 //   - Not referenced at all    -> "unused" — a true orphan.
 func usageLabel(refCount int, place PlacementInfo) string {
-	if len(place.Locations) > 0 {
-		return strings.Join(place.Locations, ", ")
+	var parts []string
+
+	// Slides come first, spelled out as deck page numbers.
+	if n := len(place.SlideNumbers); n > 0 {
+		nums := make([]string, n)
+		for i, page := range place.SlideNumbers {
+			nums[i] = strconv.Itoa(page)
+		}
+		word := "slide "
+		if n > 1 {
+			word = "slides "
+		}
+		parts = append(parts, word+strings.Join(nums, ", "))
+	} else if place.UsedOnSlide {
+		// Placed on a slide whose page number could not be determined.
+		parts = append(parts, "slide")
+	}
+
+	// Then any non-slide locations (layout, master, notes, ...).
+	parts = append(parts, place.Locations...)
+
+	if len(parts) > 0 {
+		return strings.Join(parts, ", ")
 	}
 	if refCount == 0 {
 		return "unused"
@@ -222,6 +251,22 @@ func estimateAction(m MediaInfo, opts CompressionOptions) (string, int64) {
 
 	// Below the minimum size we never touch the image.
 	if m.Bytes < int64(opts.MinSizeKB)*1024 {
+		return actSkip, m.Bytes
+	}
+
+	// Videos have their own two options and never enter the image paths.
+	if m.IsVideo {
+		if opts.RemoveVideos {
+			// Replaced by the ~2 KB placeholder MP4.
+			return actRemoveVideo, int64(len(placeholderMP4()))
+		}
+		if lv, ok := videoLevelFor(opts.VideoCompression); ok && m.IsMp4 {
+			// Rough ratio per level; real numbers come from the actual encode.
+			est := int64(float64(m.Bytes) * lv.estFactor)
+			if est > 0 && est < m.Bytes {
+				return actCompressVideo, est
+			}
+		}
 		return actSkip, m.Bytes
 	}
 

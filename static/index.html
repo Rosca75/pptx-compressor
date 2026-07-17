@@ -177,12 +177,42 @@
       </p>
     </div>
 
+    <!-- Group: videos — only shown when the analysed deck contains videos.
+         Removal swaps each video for a tiny placeholder (structure stays
+         valid); compression re-encodes MP4s through ffmpeg. -->
+    <div class="option-group" id="video-options" style="display:none">
+      <div class="option-label">Videos (<span id="video-count">0</span> found)</div>
+      <label class="checkbox-label">
+        <input type="checkbox" id="opt-remove-videos" disabled>
+        Remove videos
+      </label>
+      <label class="option-label" for="opt-video-compression">MP4 video compression</label>
+      <select id="opt-video-compression" disabled>
+        <option value="none" selected>None — keep videos as-is</option>
+        <option value="light">Light — near-original quality</option>
+        <option value="balanced">Balanced — capped at 720p-class</option>
+        <option value="aggressive">Aggressive — smaller, visible loss</option>
+        <option value="extreme">Extreme — smallest, low quality</option>
+      </select>
+      <p class="option-warning" id="remove-videos-warning" style="display:none">
+        <i data-feather="alert-triangle"></i>
+        Each video is replaced by a tiny placeholder — the slide keeps its
+        preview image but the video can no longer be played.
+      </p>
+      <p class="option-warning" id="ffmpeg-warning" style="display:none">
+        <i data-feather="alert-triangle"></i>
+        ffmpeg was not found, so video compression is unavailable. Install
+        ffmpeg (or place <code>ffmpeg.exe</code> next to the app) and
+        re-analyze. Removing videos still works without it.
+      </p>
+    </div>
+
     <!-- Group: output file — new copy vs replace the original -->
     <div class="option-group">
       <div class="option-label">Output file</div>
       <label class="radio-label">
         <input type="radio" name="opt-output-mode" value="copy" checked disabled>
-        Create a new copy (<code>…_compressed.pptx</code>)
+        Create a new copy
       </label>
       <label class="radio-label">
         <input type="radio" name="opt-output-mode" value="replace" disabled>
