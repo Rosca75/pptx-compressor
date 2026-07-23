@@ -19,7 +19,9 @@
 package main
 
 import (
+	"encoding/xml"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -42,6 +44,140 @@ func hasEmbeddedFonts(p *PptxFile) bool {
 		}
 	}
 	return false
+}
+
+// -----------------------------------------------------------------------------
+// Embedded-font inventory
+// -----------------------------------------------------------------------------
+//
+// The structs below mirror just the <p:embeddedFontLst> portion of
+// ppt/presentation.xml. encoding/xml matches on the LOCAL element/attribute
+// name, so the "p:" and "r:" namespace prefixes in the real file are irrelevant
+// — a field tagged `xml:"typeface,attr"` still matches `typeface="..."`, and
+// `xml:"id,attr"` matches `r:id="..."`.
+
+// embeddedFontList captures the ordered list of embedded font families.
+type embeddedFontList struct {
+	Fonts []embeddedFontEntry `xml:"embeddedFontLst>embeddedFont"`
+}
+
+// embeddedFontEntry is one <p:embeddedFont> — a family plus up to four weight
+// variants, each pointing at a font part via its relationship id.
+type embeddedFontEntry struct {
+	Face       fontFace `xml:"font"`
+	Regular    *fontRel `xml:"regular"`
+	Bold       *fontRel `xml:"bold"`
+	Italic     *fontRel `xml:"italic"`
+	BoldItalic *fontRel `xml:"boldItalic"`
+}
+
+// fontFace carries the family name from <p:font typeface="..."/>.
+type fontFace struct {
+	Typeface string `xml:"typeface,attr"`
+}
+
+// fontRel is one weight element (<p:regular>, <p:bold>, ...) whose r:id points
+// at a ppt/fonts/*.fntdata part listed in presentation.xml.rels.
+type fontRel struct {
+	ID string `xml:"id,attr"`
+}
+
+// embeddedFonts inventories the fonts embedded in the deck as one FontInfo per
+// font family, largest first. It reads the <p:embeddedFontLst> from
+// ppt/presentation.xml, resolves each weight's relationship id through
+// ppt/_rels/presentation.xml.rels to a ppt/fonts/*.fntdata part, and sums the
+// stored part sizes. Returns nil when the deck embeds no fonts. Read-only.
+func embeddedFonts(p *PptxFile) []FontInfo {
+	pres := p.entry("ppt/presentation.xml")
+	rels := p.entry("ppt/_rels/presentation.xml.rels")
+	if pres == nil || rels == nil {
+		return nil
+	}
+
+	// Parse the embedded-font list from presentation.xml.
+	var fl embeddedFontList
+	if err := xml.Unmarshal(pres.data, &fl); err != nil || len(fl.Fonts) == 0 {
+		return nil
+	}
+
+	// Build a relationship-id → font-part map from presentation.xml.rels,
+	// keeping only relationships of the font type.
+	var rf relsFile
+	if err := xml.Unmarshal(rels.data, &rf); err != nil {
+		return nil
+	}
+	base := relsBaseDir(rels.name) // "ppt"
+	relTarget := make(map[string]string, len(rf.Relationships))
+	for _, rel := range rf.Relationships {
+		if rel.Type == fontRelType {
+			relTarget[rel.Id] = resolveTarget(base, rel.Target)
+		}
+	}
+
+	out := make([]FontInfo, 0, len(fl.Fonts))
+	for _, ef := range fl.Fonts {
+		fi := FontInfo{Typeface: ef.Face.Typeface}
+		// Collect whichever of the four weights are present on this family.
+		for _, w := range []*fontRel{ef.Regular, ef.Bold, ef.Italic, ef.BoldItalic} {
+			if w == nil || w.ID == "" {
+				continue
+			}
+			part, ok := relTarget[w.ID]
+			if !ok {
+				continue // relationship missing or not a font — skip defensively
+			}
+			fi.RelIDs = append(fi.RelIDs, w.ID)
+			fi.PartNames = append(fi.PartNames, part)
+			fi.Weights++
+			if e := p.entry(part); e != nil {
+				fi.Bytes += e.storedSize()
+			}
+		}
+		// Only surface families that actually resolved to embedded parts.
+		if fi.Weights > 0 {
+			out = append(out, fi)
+		}
+	}
+
+	// Largest family first so the biggest space hog is obvious in the UI.
+	sort.Slice(out, func(i, j int) bool { return out[i].Bytes > out[j].Bytes })
+	return out
+}
+
+// fileComposition splits the whole file into on-disk byte buckets — images,
+// videos, fonts and everything else — so the UI can show "where are the bytes".
+// Every category is measured by its stored (compressed) size, the same currency
+// as the .pptx size on disk, so the four buckets reconcile to the file size
+// (bar a few bytes of central-directory overhead). videoParts names the media
+// parts already classified as videos by AnalyzeMedia.
+func fileComposition(p *PptxFile, videoParts map[string]bool) (image, video, font, other int64) {
+	for _, e := range p.Entries {
+		sz := e.storedSize()
+		switch {
+		case strings.HasPrefix(e.name, "ppt/fonts/") && strings.HasSuffix(e.name, ".fntdata"):
+			font += sz
+		case strings.HasPrefix(e.name, mediaPrefix):
+			if videoParts[e.name] {
+				video += sz
+			} else {
+				image += sz
+			}
+		default:
+			other += sz
+		}
+	}
+	return
+}
+
+// fontPartsBytes sums the on-disk size of every ppt/fonts/*.fntdata part.
+func fontPartsBytes(p *PptxFile) int64 {
+	var total int64
+	for _, e := range p.Entries {
+		if strings.HasPrefix(e.name, "ppt/fonts/") && strings.HasSuffix(e.name, ".fntdata") {
+			total += e.storedSize()
+		}
+	}
+	return total
 }
 
 // =============================================================================

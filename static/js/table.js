@@ -19,22 +19,21 @@ let sortDir = 1; // 1 = ascending, -1 = descending
 const selected = new Set();
 
 /**
- * Render the analysis table from an AnalysisResult.
+ * Render the Images tab from an AnalysisResult. Videos live in their own tab,
+ * so they are filtered out here; global view switching (empty state, report
+ * card, which tab is active) is owned by tabs.js.
  * @param {Object} result - AnalysisResult { media[], ... }.
  */
 export function renderTable(result) {
-  const emptyState = document.getElementById('empty-state');
   const table = document.getElementById('media-table');
-  const reportCard = document.getElementById('report-card');
 
-  currentMedia = (result && result.media) || [];
+  // Images only — video parts are shown in the Videos tab.
+  currentMedia = ((result && result.media) || []).filter((m) => !m.isVideo);
 
-  // A fresh analysis clears any prior selection and hides the report card.
+  // A fresh analysis clears any prior selection.
   selected.clear();
-  if (reportCard) reportCard.style.display = 'none';
 
   const has = currentMedia.length > 0;
-  if (emptyState) emptyState.style.display = has ? 'none' : '';
   if (table) table.style.display = has ? '' : 'none';
 
   wireSortHeaders();

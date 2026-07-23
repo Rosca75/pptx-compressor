@@ -57,23 +57,26 @@ pptx-compressor/
 │   ├── ci.yml                    vet + gofmt + build matrix (ubuntu/windows/macos)
 │   └── release.yml               tag v* → wails build windows/amd64 → release
 └── static/                       ← active frontend (embedded via //go:embed all:static)
-    ├── index.html    188 lines   3-zone layout: top bar / analysis table / options panel
+    ├── index.html                 3-zone layout: top bar / tabbed main area / options panel
     ├── css/
     │   ├── base.css        67 lines   Design tokens, reset, typography
     │   ├── layout.css     143 lines   3-zone CSS grid
-    │   ├── table.css       86 lines   Analysis table + badges + thumbnails + sort
+    │   ├── table.css                  Analysis table + composition bar + tabs + font rows
     │   └── components.css 179 lines   Buttons, controls, toast, confirm, report, warning
     └── js/
-        ├── app.js          16 lines   Entry point — imports modules, wires init()
-        ├── state.js        37 lines   Shared state object (single source of truth)
-        ├── api.js          82 lines   All window.go.main.App.* calls (isolation layer)
+        ├── app.js                     Entry point — imports modules, wires init()
+        ├── state.js                   Shared state object (single source of truth)
+        ├── api.js                     All window.go.main.App.* calls (isolation layer)
         ├── helpers.js      42 lines   Pure formatting utilities
         ├── components.js   59 lines   showToast(), showConfirm()
-        ├── analyze.js      55 lines   File picker + Analyze flow
-        ├── options.js     121 lines   Options panel: presets, read/enable, WebP warning
+        ├── analyze.js                 File picker + Analyze flow → renderAnalysis
+        ├── options.js                 Options panel: presets, read/enable, WebP + video wiring
         ├── compress.js    108 lines   StartCompression + progress polling + Cancel
-        ├── table.js       176 lines   Analysis table: previews, override, sorting
-        └── report.js       96 lines   Before/after report card + per-image results
+        ├── tabs.js                    Main area: composition breakdown + Images/Videos/Fonts tabs
+        ├── table.js                   Images tab: previews, override, sorting
+        ├── videos.js                  Videos tab: list of video parts
+        ├── fonts.js                   Fonts tab: per-family embedded-font selection
+        └── report.js                  Before/after report card + per-image results
 ```
 
 > **Status:** v0.1.0 — the business logic is complete. `go build ./...` and
@@ -186,14 +189,24 @@ static/js/
 ├── api.js        All window.go.main.App.* calls (isolation layer)
 ├── helpers.js    Pure formatting utilities (formatBytes, formatSavings, ...)
 ├── components.js showToast(), showConfirm()
-├── analyze.js    File picker + Analyze flow → renderTable
-├── options.js    Options panel: read values, enable/disable controls
+├── analyze.js    File picker + Analyze flow → renderAnalysis
+├── options.js    Options panel: read values, enable/disable, video-control wiring
 ├── compress.js   StartCompression + GetProgress polling loop + Cancel
-├── table.js      Renders the media analysis table
+├── tabs.js       Main area orchestrator: composition bar + Images/Videos/Fonts tabs
+├── table.js      Renders the Images tab (media parts, excluding videos)
+├── videos.js     Renders the Videos tab (list of video parts)
+├── fonts.js      Renders the Fonts tab (per-family embedded-font selection)
 └── report.js     Renders the before/after report card
 ```
 
 ### UI layout — 3 zones
+
+The Main Area is split into three tabs — **Images / Videos / Fonts** — above a
+file-composition breakdown that shows where the bytes actually are (images /
+videos / fonts / other). Each tab header shows that category's size and
+potential saving, and a tab is greyed out when its category is empty. Videos and
+fonts are acted on from their own tabs (video remove/compress; per-font strip),
+not from the Options Panel.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -201,10 +214,10 @@ static/js/
 │  [━━━━━━━━━ progress bar (during compression) ━━━━━━━━━━━]     │
 ├───────────────────────────────────────────┬────────────────────┤
 │  Main Area                                 │  Options Panel     │
-│  Analysis table (one row per media part)   │  preset, quality,  │
-│  + before/after report card                │  max edge, min     │
-│                                            │  size, format &    │
-│                                            │  cleanup toggles   │
+│  Composition bar (images/videos/fonts/…)   │  preset, quality,  │
+│  [ Images | Videos | Fonts ] tabs          │  max edge, min     │
+│  active tab's table / font list            │  size, format &    │
+│  + before/after report card                │  cleanup toggles   │
 └───────────────────────────────────────────┴────────────────────┘
 ```
 
