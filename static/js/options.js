@@ -30,12 +30,10 @@ function els() {
     quantizePng:   document.getElementById('opt-quantize-transparent-png'),
     useWebp:       document.getElementById('opt-use-webp'),
     removeUnused:  document.getElementById('opt-remove-unused-media'),
-    stripFonts:    document.getElementById('opt-strip-embedded-fonts'),
     webpWarning:   document.getElementById('webp-warning'),
     outputMode:    document.querySelectorAll('input[name="opt-output-mode"]'),
     replaceWarning: document.getElementById('replace-warning'),
     videoGroup:    document.getElementById('video-options'),
-    videoCount:    document.getElementById('video-count'),
     removeVideos:  document.getElementById('opt-remove-videos'),
     videoCompression: document.getElementById('opt-video-compression'),
     removeVideosWarning: document.getElementById('remove-videos-warning'),
@@ -126,9 +124,10 @@ export function initOptions() {
  * Called by analyze.js after each successful analysis (and AFTER
  * setOptionsEnabled, which blanket-enables every panel control).
  *
- * The group only appears when the deck actually contains videos, so users
- * without videos never see the extra controls. The compression select is
- * additionally gated on ffmpeg being installed; removal works without it.
+ * The video controls live in the Videos tab (main area), which is only
+ * reachable when the deck has videos, so this just resets stale state when
+ * there are none and, when there are, enables the controls and gates the MP4
+ * compression select on ffmpeg being installed (removal works without it).
  * @param {Object} analysis - AnalysisResult { videoCount, ffmpegAvailable }.
  */
 export function updateVideoOptions(analysis) {
@@ -136,19 +135,19 @@ export function updateVideoOptions(analysis) {
   const count = (analysis && analysis.videoCount) || 0;
   state.ffmpegAvailable = !!(analysis && analysis.ffmpegAvailable);
 
-  if (e.videoGroup) e.videoGroup.style.display = count > 0 ? '' : 'none';
-  if (e.videoCount) e.videoCount.textContent = String(count);
-
   if (count === 0) {
     // No videos: make sure stale choices from a previous file don't linger.
-    if (e.removeVideos) e.removeVideos.checked = false;
-    if (e.videoCompression) e.videoCompression.value = 'none';
+    if (e.removeVideos) { e.removeVideos.checked = false; e.removeVideos.disabled = true; }
+    if (e.videoCompression) { e.videoCompression.value = 'none'; e.videoCompression.disabled = true; }
     if (e.removeVideosWarning) e.removeVideosWarning.style.display = 'none';
     state.options.removeVideos = false;
     state.options.videoCompression = 'none';
     return;
   }
 
+  // Video controls sit outside the options panel, so enable them here (the
+  // panel's blanket enable does not reach them).
+  if (e.removeVideos) e.removeVideos.disabled = false;
   if (e.ffmpegWarning) e.ffmpegWarning.style.display = state.ffmpegAvailable ? 'none' : '';
   syncVideoCompressionEnabled();
 }
@@ -233,7 +232,9 @@ export function readOptions() {
     quantizeTransparentPng: !!(e.quantizePng && e.quantizePng.checked),
     useWebp: !!(e.useWebp && e.useWebp.checked),
     removeUnusedMedia: !!(e.removeUnused && e.removeUnused.checked),
-    stripEmbeddedFonts: !!(e.stripFonts && e.stripFonts.checked),
+    // Font removal is per-family from the Fonts tab (state.options.removeFontTypefaces).
+    stripEmbeddedFonts: false,
+    removeFontTypefaces: (state.options.removeFontTypefaces || []).slice(),
     removeVideos: !!(e.removeVideos && e.removeVideos.checked),
     videoCompression: (e.videoCompression && e.videoCompression.value) || 'none',
     replaceOriginal: selectedOutputMode(e.outputMode) === 'replace',

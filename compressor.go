@@ -158,8 +158,8 @@ func runCompression(ctx context.Context, req CompressionRequest) {
 	if opts.RemoveUnusedMedia {
 		removeUnusedMedia(p)
 	}
-	if opts.StripEmbeddedFonts {
-		stripEmbeddedFonts(p)
+	if opts.StripEmbeddedFonts || len(opts.RemoveFontTypefaces) > 0 {
+		stripEmbeddedFonts(p, opts.RemoveFontTypefaces, opts.StripEmbeddedFonts)
 	}
 
 	// ---- write output + safety check ------------------------------------
@@ -396,28 +396,88 @@ const fontRelType = "http://schemas.openxmlformats.org/officeDocument/2006/relat
 // element (with any namespace prefix) inside ppt/presentation.xml.
 var embeddedFontLstRe = regexp.MustCompile(`(?s)<([a-zA-Z0-9]+:)?embeddedFontLst\b.*?</([a-zA-Z0-9]+:)?embeddedFontLst>`)
 
-// stripEmbeddedFonts removes embedded fonts entirely: the ppt/fonts/*.fntdata
-// parts, the <embeddedFontLst> element in ppt/presentation.xml, and the font
-// relationships in ppt/_rels/presentation.xml.rels. Recipients without the
-// fonts installed will see substitute fonts — the UI warns about this.
-func stripEmbeddedFonts(p *PptxFile) {
-	// 1) Remove the embeddedFontLst element from presentation.xml.
-	if pres := p.entry("ppt/presentation.xml"); pres != nil {
+// stripEmbeddedFonts removes embedded fonts from the package. Fonts are stored
+// uncompressed and are essentially incompressible, so removal is the only way to
+// reclaim their space; recipients without the fonts installed then see a
+// substitute font (the UI warns about this).
+//
+// Two modes:
+//   - all == true: remove EVERY embedded font (the coarse "strip all" switch).
+//   - otherwise: remove only the families named in typefaces, leaving the rest
+//     embedded. This is what the per-font Fonts tab uses so a user can drop a
+//     huge fallback face (e.g. Arial Unicode MS) while keeping small brand fonts.
+//
+// In both modes it performs the three edits an embedded-font removal requires:
+// deleting the ppt/fonts/*.fntdata parts, dropping their relationships in
+// ppt/_rels/presentation.xml.rels, and removing the matching markup in
+// ppt/presentation.xml (the whole <embeddedFontLst>, or the individual
+// <embeddedFont> elements).
+func stripEmbeddedFonts(p *PptxFile, typefaces []string, all bool) {
+	pres := p.entry("ppt/presentation.xml")
+	if pres == nil {
+		return
+	}
+	rels := p.entry("ppt/_rels/presentation.xml.rels")
+
+	if all {
+		stripAllEmbeddedFonts(p, pres, rels)
+		return
+	}
+	if len(typefaces) == 0 {
+		return // nothing selected
+	}
+
+	// Which families should go?
+	want := make(map[string]bool, len(typefaces))
+	for _, t := range typefaces {
+		want[t] = true
+	}
+
+	// Reuse the analyzer's inventory so "which parts/rels back this family" has a
+	// single definition. Walk it, removing the selected families' markup, rels
+	// and parts and counting how many families remain embedded.
+	fontParts := map[string]bool{}
+	remaining := 0
+	for _, f := range embeddedFonts(p) {
+		if !want[f.Typeface] {
+			remaining++
+			continue
+		}
+		// Remove this family's <embeddedFont> element from presentation.xml.
+		pres.data = removeEmbeddedFontElement(pres.data, f.Typeface)
+		// Drop its relationships and remember its parts for deletion.
+		for _, part := range f.PartNames {
+			fontParts[part] = true
+		}
+		if rels != nil {
+			for _, id := range f.RelIDs {
+				rels.data = removeRelationshipElement(rels.data, id)
+			}
+		}
+	}
+
+	// If nothing is left embedded, drop the now-empty <embeddedFontLst> wrapper.
+	if remaining == 0 {
 		pres.data = embeddedFontLstRe.ReplaceAll(pres.data, nil)
 	}
+
+	deleteFontParts(p, fontParts)
+}
+
+// stripAllEmbeddedFonts removes every embedded font in one pass: the whole
+// <embeddedFontLst>, all font relationships, and all ppt/fonts/*.fntdata parts.
+func stripAllEmbeddedFonts(p *PptxFile, pres, rels *zipEntry) {
+	// 1) Remove the embeddedFontLst element from presentation.xml.
+	pres.data = embeddedFontLstRe.ReplaceAll(pres.data, nil)
 
 	// 2) Remove font relationships from presentation.xml.rels and collect the
 	//    font part names they targeted so we can delete those parts.
 	fontParts := map[string]bool{}
-	if rels := p.entry("ppt/_rels/presentation.xml.rels"); rels != nil {
+	if rels != nil {
 		var rf relsFile
 		if err := xml.Unmarshal(rels.data, &rf); err == nil {
 			base := relsBaseDir(rels.name) // "ppt"
-			var kept []byte
-			// Rebuild the rels XML dropping font relationships. We do a targeted
-			// string removal of each font <Relationship .../> element to keep the
-			// rest of the file intact.
-			kept = rels.data
+			kept := rels.data
 			for _, rel := range rf.Relationships {
 				if rel.Type == fontRelType {
 					fontParts[resolveTarget(base, rel.Target)] = true
@@ -428,12 +488,28 @@ func stripEmbeddedFonts(p *PptxFile) {
 		}
 	}
 
-	// 3) Delete the font parts themselves (ppt/fonts/*.fntdata and any collected
-	//    targets). These live outside ppt/media/, so remove entries directly.
+	// 3) Delete the font parts themselves. Every ppt/fonts/*.fntdata goes, plus
+	//    any target collected above (belt and braces).
 	for i := 0; i < len(p.Entries); {
 		e := p.Entries[i]
 		isFontData := strings.HasPrefix(e.name, "ppt/fonts/") && strings.HasSuffix(e.name, ".fntdata")
 		if isFontData || fontParts[e.name] {
+			p.Entries = append(p.Entries[:i], p.Entries[i+1:]...)
+			continue
+		}
+		i++
+	}
+}
+
+// deleteFontParts removes the named entries from the package. Font parts live
+// outside ppt/media/, so they are removed directly (RemoveMediaPart's refcount
+// guard and ppt/media/ scope do not apply).
+func deleteFontParts(p *PptxFile, parts map[string]bool) {
+	if len(parts) == 0 {
+		return
+	}
+	for i := 0; i < len(p.Entries); {
+		if parts[p.Entries[i].name] {
 			p.Entries = append(p.Entries[:i], p.Entries[i+1:]...)
 			continue
 		}
@@ -460,6 +536,21 @@ func removeRelationshipElement(data []byte, id string) []byte {
 	}
 	end = idx + end + 1
 	return append(data[:start:start], data[end:]...)
+}
+
+// removeEmbeddedFontElement removes the single <p:embeddedFont>...</p:embeddedFont>
+// element whose child <p:font> declares the given typeface, from a
+// presentation.xml document. Namespace prefixes are optional and the typeface is
+// regex-escaped, so an exact family-name match is required. If nothing matches
+// (or the pattern fails to compile) the input is returned unchanged.
+func removeEmbeddedFontElement(data []byte, typeface string) []byte {
+	pat := `(?s)<([a-zA-Z0-9]+:)?embeddedFont\b[^>]*>\s*<([a-zA-Z0-9]+:)?font\b[^>]*\btypeface="` +
+		regexp.QuoteMeta(typeface) + `"[^>]*>.*?</([a-zA-Z0-9]+:)?embeddedFont>`
+	re, err := regexp.Compile(pat)
+	if err != nil {
+		return data
+	}
+	return re.ReplaceAll(data, nil)
 }
 
 // =============================================================================

@@ -25,7 +25,9 @@ export function apiSelectPptxFile() {
  * Inventory the media parts of a .pptx (read-only).
  * Wraps Go: AnalyzePptx(path string) AnalysisResult
  * @param {string} path - Absolute path of the .pptx.
- * @returns {Promise<Object>} AnalysisResult { path, media[], totalBytes, estimatedBytes, error }.
+ * @returns {Promise<Object>} AnalysisResult { path, media[], fonts[], fileBytes,
+ *   totalBytes, estimatedBytes, imageBytes, videoBytes, fontBytes, otherBytes,
+ *   videoCount, ffmpegAvailable, error }.
  */
 export function apiAnalyzePptx(path) {
   return GoApp().AnalyzePptx(path || '');

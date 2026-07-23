@@ -74,6 +74,24 @@ type zipEntry struct {
 	// media (usually Stored) is not needlessly re-deflated, while XML parts
 	// (usually Deflated) are re-compressed at the best level on write.
 	method uint16
+
+	// compressedSize is the on-disk (stored) size of this entry in the source
+	// archive, i.e. how many bytes it actually costs in the .pptx. It powers the
+	// file-composition breakdown so every category is measured in the same
+	// currency as the whole-file size. Zero for entries created after open
+	// (rewrites) — callers fall back to len(data) via storedSize().
+	compressedSize int64
+}
+
+// storedSize returns the entry's on-disk footprint: its compressed size in the
+// source archive, or the uncompressed length when that is unknown (e.g. a part
+// created during a rewrite). For incompressible parts (fonts, already-encoded
+// images) the two are effectively equal.
+func (e *zipEntry) storedSize() int64 {
+	if e.compressedSize > 0 {
+		return e.compressedSize
+	}
+	return int64(len(e.data))
 }
 
 // =============================================================================
@@ -186,9 +204,10 @@ func OpenPptx(path string) (*PptxFile, error) {
 		}
 
 		p.Entries = append(p.Entries, &zipEntry{
-			name:   f.Name,
-			data:   data,
-			method: f.Method,
+			name:           f.Name,
+			data:           data,
+			method:         f.Method,
+			compressedSize: int64(f.CompressedSize64),
 		})
 	}
 

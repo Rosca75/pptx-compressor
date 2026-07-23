@@ -64,7 +64,7 @@
   </div>
 
   <!-- ===================================================================== -->
-  <!-- Zone D — Main Area: analysis table + before/after report              -->
+  <!-- Zone D — Main Area: file composition + Images/Videos/Fonts tabs        -->
   <!-- ===================================================================== -->
   <div class="main-area">
     <div id="results-area">
@@ -72,48 +72,146 @@
       <div class="empty-state" id="empty-state">
         <div class="empty-icon"><i data-feather="image"></i></div>
         <p>Open a <strong>.pptx</strong> file and click <strong>Analyze</strong>
-           to inventory its embedded images and estimate savings.</p>
+           to see where its size comes from — images, videos and embedded fonts —
+           and estimate savings.</p>
       </div>
 
-      <!-- Bulk-selection action bar: appears once one or more rows are ticked.
-           Lets the user apply a single override to every selected image. -->
-      <div class="bulk-actions" id="bulk-actions" style="display:none">
-        <span class="bulk-count" id="bulk-count">0 selected</span>
-        <label class="bulk-field">
-          Set override
-          <select id="bulk-override">
-            <option value="auto">Auto</option>
-            <option value="skip">Skip</option>
-            <option value="remove">Remove</option>
-          </select>
-        </label>
-        <button class="btn btn-primary btn-sm" id="bulk-apply">Apply to selected</button>
-        <button class="btn btn-outline btn-sm" id="bulk-clear">Clear selection</button>
-      </div>
+      <!-- Analysis view: a "where are the bytes" breakdown plus one tab per
+           category. Shown after a successful analysis; hidden while the report
+           card is visible. Populated by tabs.js / table.js / videos.js /
+           fonts.js. -->
+      <div id="analysis-view" style="display:none">
 
-      <!-- Analysis table (populated by table.js after analysis) -->
-      <table class="media-table" id="media-table" style="display:none">
-        <thead>
-          <tr>
-            <th class="select-col"><input type="checkbox" id="select-all" title="Select all"></th>
-            <th>Preview</th>
-            <th class="sortable" data-sort="partName">Part</th>
-            <th class="sortable" data-sort="format">Format</th>
-            <th class="sortable" data-sort="pixels">Dimensions</th>
-            <th class="sortable num" data-sort="bytes">Size</th>
-            <th class="sortable" data-sort="hasAlpha">Alpha</th>
-            <th class="sortable" data-sort="usedOnSlide">Usage</th>
-            <th>Proposed action</th>
-            <th class="sortable num" data-sort="estimatedBytes">Est. size</th>
-            <th>Override</th>
-          </tr>
-        </thead>
-        <tbody id="media-tbody"></tbody>
-      </table>
+        <!-- File-composition breakdown (images / videos / fonts / other). -->
+        <div class="composition" id="composition">
+          <div class="composition-head">
+            <span class="composition-title">File composition</span>
+            <span class="composition-total" id="composition-total"></span>
+          </div>
+          <div class="composition-bar" id="composition-bar"></div>
+          <div class="composition-legend" id="composition-legend"></div>
+        </div>
+
+        <!-- Category tabs. A tab is greyed out when its category is empty. -->
+        <div class="tab-bar" id="tab-bar">
+          <button class="tab-btn" data-tab="images" id="tab-btn-images">
+            <span class="tab-name">Images</span>
+            <span class="tab-meta" id="tab-meta-images">—</span>
+          </button>
+          <button class="tab-btn" data-tab="videos" id="tab-btn-videos">
+            <span class="tab-name">Videos</span>
+            <span class="tab-meta" id="tab-meta-videos">—</span>
+          </button>
+          <button class="tab-btn" data-tab="fonts" id="tab-btn-fonts">
+            <span class="tab-name">Fonts</span>
+            <span class="tab-meta" id="tab-meta-fonts">—</span>
+          </button>
+        </div>
+
+        <!-- Images panel -->
+        <div class="tab-panel" id="panel-images">
+          <!-- Bulk-selection action bar: appears once one or more rows are
+               ticked. Applies a single override to every selected image. -->
+          <div class="bulk-actions" id="bulk-actions" style="display:none">
+            <span class="bulk-count" id="bulk-count">0 selected</span>
+            <label class="bulk-field">
+              Set override
+              <select id="bulk-override">
+                <option value="auto">Auto</option>
+                <option value="skip">Skip</option>
+                <option value="remove">Remove</option>
+              </select>
+            </label>
+            <button class="btn btn-primary btn-sm" id="bulk-apply">Apply to selected</button>
+            <button class="btn btn-outline btn-sm" id="bulk-clear">Clear selection</button>
+          </div>
+
+          <!-- Analysis table (populated by table.js after analysis) -->
+          <table class="media-table" id="media-table" style="display:none">
+            <thead>
+              <tr>
+                <th class="select-col"><input type="checkbox" id="select-all" title="Select all"></th>
+                <th>Preview</th>
+                <th class="sortable" data-sort="partName">Part</th>
+                <th class="sortable" data-sort="format">Format</th>
+                <th class="sortable" data-sort="pixels">Dimensions</th>
+                <th class="sortable num" data-sort="bytes">Size</th>
+                <th class="sortable" data-sort="hasAlpha">Alpha</th>
+                <th class="sortable" data-sort="usedOnSlide">Usage</th>
+                <th>Proposed action</th>
+                <th class="sortable num" data-sort="estimatedBytes">Est. size</th>
+                <th>Override</th>
+              </tr>
+            </thead>
+            <tbody id="media-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Videos panel — controls (relocated from the options panel) plus a
+             list of the video parts found. -->
+        <div class="tab-panel" id="panel-videos" style="display:none">
+          <div class="option-group" id="video-options">
+            <label class="checkbox-label">
+              <input type="checkbox" id="opt-remove-videos" disabled>
+              Remove videos
+            </label>
+            <label class="option-label" for="opt-video-compression">MP4 video compression</label>
+            <select id="opt-video-compression" disabled>
+              <option value="none" selected>None — keep videos as-is</option>
+              <option value="light">Light — near-original quality</option>
+              <option value="balanced">Balanced — capped at 720p-class</option>
+              <option value="aggressive">Aggressive — smaller, visible loss</option>
+              <option value="extreme">Extreme — smallest, low quality</option>
+            </select>
+            <p class="option-warning" id="remove-videos-warning" style="display:none">
+              <i data-feather="alert-triangle"></i>
+              Each video is replaced by a tiny placeholder — the slide keeps its
+              preview image but the video can no longer be played.
+            </p>
+            <p class="option-warning" id="ffmpeg-warning" style="display:none">
+              <i data-feather="alert-triangle"></i>
+              ffmpeg was not found, so video compression is unavailable. Install
+              ffmpeg (or place <code>ffmpeg.exe</code> next to the app) and
+              re-analyze. Removing videos still works without it.
+            </p>
+          </div>
+          <table class="media-table" id="videos-table" style="display:none">
+            <thead>
+              <tr>
+                <th>Part</th>
+                <th>Format</th>
+                <th class="num">Size</th>
+                <th>Usage</th>
+              </tr>
+            </thead>
+            <tbody id="videos-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Fonts panel — per-font selection (populated by fonts.js). -->
+        <div class="tab-panel" id="panel-fonts" style="display:none">
+          <p class="option-note">
+            Embedded fonts are stored uncompressed and cannot be shrunk — only
+            removed. Tick the fonts you do not need travelling inside the file.
+          </p>
+          <label class="checkbox-label fonts-selectall">
+            <input type="checkbox" id="fonts-select-all" disabled>
+            Select all
+          </label>
+          <div id="fonts-list"></div>
+          <p class="option-warning" id="strip-fonts-warning" style="display:none">
+            <i data-feather="alert-triangle"></i>
+            Removing an embedded font means anyone who opens the deck without that
+            font installed sees a substitute — spacing and appearance may shift.
+            Keep brand fonts embedded; the big wins are usually large fallback
+            faces such as Arial Unicode MS.
+          </p>
+        </div>
+      </div>
 
       <!-- Before/after report (shown when a run completes) -->
       <div class="report-card" id="report-card" style="display:none">
-        <!-- TODO: rendered by report.js -->
+        <!-- rendered by report.js -->
       </div>
     </div>
   </div>
@@ -198,35 +296,9 @@
       </p>
     </div>
 
-    <!-- Group: videos — only shown when the analysed deck contains videos.
-         Removal swaps each video for a tiny placeholder (structure stays
-         valid); compression re-encodes MP4s through ffmpeg. -->
-    <div class="option-group" id="video-options" style="display:none">
-      <div class="option-label">Videos (<span id="video-count">0</span> found)</div>
-      <label class="checkbox-label">
-        <input type="checkbox" id="opt-remove-videos" disabled>
-        Remove videos
-      </label>
-      <label class="option-label" for="opt-video-compression">MP4 video compression</label>
-      <select id="opt-video-compression" disabled>
-        <option value="none" selected>None — keep videos as-is</option>
-        <option value="light">Light — near-original quality</option>
-        <option value="balanced">Balanced — capped at 720p-class</option>
-        <option value="aggressive">Aggressive — smaller, visible loss</option>
-        <option value="extreme">Extreme — smallest, low quality</option>
-      </select>
-      <p class="option-warning" id="remove-videos-warning" style="display:none">
-        <i data-feather="alert-triangle"></i>
-        Each video is replaced by a tiny placeholder — the slide keeps its
-        preview image but the video can no longer be played.
-      </p>
-      <p class="option-warning" id="ffmpeg-warning" style="display:none">
-        <i data-feather="alert-triangle"></i>
-        ffmpeg was not found, so video compression is unavailable. Install
-        ffmpeg (or place <code>ffmpeg.exe</code> next to the app) and
-        re-analyze. Removing videos still works without it.
-      </p>
-    </div>
+    <!-- Videos and embedded fonts are handled in their own tabs in the main
+         area (each shows the category size and lets you act on it), not from
+         this panel. -->
 
     <!-- Group: output file — new copy vs replace the original -->
     <div class="option-group">
@@ -253,10 +325,6 @@
       <label class="checkbox-label">
         <input type="checkbox" id="opt-remove-unused-media" checked disabled>
         Remove unused media parts
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="opt-strip-embedded-fonts" disabled>
-        Strip embedded fonts
       </label>
     </div>
 

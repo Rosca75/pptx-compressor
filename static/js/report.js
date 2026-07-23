@@ -13,17 +13,15 @@ import { apiOpenOutputFolder } from './api.js';
  */
 export function renderReport(p) {
   const card = document.getElementById('report-card');
-  const table = document.getElementById('media-table');
   if (!card || !p) return;
 
   // Prefer whole-file sizes for the headline; fall back to media totals.
   const before = p.fileBytesBefore || p.bytesBefore || 0;
   const after = p.fileBytesAfter || p.bytesAfter || 0;
 
-  // Hide the analysis table (and its bulk-action bar) so the report is the focus.
-  if (table) table.style.display = 'none';
-  const bulk = document.getElementById('bulk-actions');
-  if (bulk) bulk.style.display = 'none';
+  // Hide the whole analysis view (tabs + composition) so the report is the focus.
+  const view = document.getElementById('analysis-view');
+  if (view) view.style.display = 'none';
   card.style.display = '';
 
   card.innerHTML = `

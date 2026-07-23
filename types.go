@@ -126,6 +126,38 @@ type MediaInfo struct {
 }
 
 // =============================================================================
+// FontInfo — one embedded font family in the Fonts tab
+// =============================================================================
+
+// FontInfo describes a single embedded font family (e.g. "Arial Unicode MS")
+// and the space it occupies inside the .pptx. PowerPoint can embed several
+// weight/style variants of the same family (regular, bold, italic, bold-italic),
+// each as its own ppt/fonts/fontN.fntdata part; FontInfo groups them so the UI
+// shows one row per family with the combined size. Embedded fonts are stored
+// uncompressed and are essentially incompressible, so the only way to reclaim
+// their space is to remove them — the Fonts tab lets the user pick which
+// families to strip (recipients then see a substitute font).
+type FontInfo struct {
+	// Typeface is the font family name as declared in <p:embeddedFont>, e.g.
+	// "Arial Unicode MS". This is the identity the user selects to strip and the
+	// key the strip step matches on.
+	Typeface string `json:"typeface"`
+
+	// Bytes is the combined size of every embedded weight of this family.
+	Bytes int64 `json:"bytes"`
+
+	// Weights is how many weight/style variants are embedded (1–4).
+	Weights int `json:"weights"`
+
+	// PartNames lists the ppt/fonts/fontN.fntdata parts backing this family.
+	PartNames []string `json:"partNames"`
+
+	// RelIDs lists the relationship ids in ppt/_rels/presentation.xml.rels that
+	// point at this family's parts (one per weight).
+	RelIDs []string `json:"relIds"`
+}
+
+// =============================================================================
 // AnalysisResult — the full inventory returned by AnalyzePptx
 // =============================================================================
 
@@ -162,6 +194,22 @@ type AnalysisResult struct {
 	// HasEmbeddedFonts is true when the deck embeds fonts (ppt/fonts/*.fntdata),
 	// which the "strip fonts" option can remove.
 	HasEmbeddedFonts bool `json:"hasEmbeddedFonts"`
+
+	// Fonts is one entry per embedded font family, largest first. It backs the
+	// Fonts tab, where the user ticks which families to strip. Empty when the
+	// deck embeds no fonts.
+	Fonts []FontInfo `json:"fonts"`
+
+	// The four *Bytes fields below are the whole-file composition breakdown that
+	// powers the "where are the bytes" summary and the per-tab size badges. They
+	// partition FileBytes so the user can instantly see what dominates the file
+	// (in the reported case, ~87% fonts). ImageBytes + VideoBytes together equal
+	// TotalBytes (all ppt/media/ parts); OtherBytes is everything not counted by
+	// the other three (XML, thumbnails, embedded objects) plus zip overhead.
+	ImageBytes int64 `json:"imageBytes"`
+	VideoBytes int64 `json:"videoBytes"`
+	FontBytes  int64 `json:"fontBytes"`
+	OtherBytes int64 `json:"otherBytes"`
 
 	// Error is a human-readable message if analysis failed; empty on success.
 	Error string `json:"error"`
@@ -218,8 +266,17 @@ type CompressionOptions struct {
 	// RemoveUnusedMedia drops media parts with a reference count of zero.
 	RemoveUnusedMedia bool `json:"removeUnusedMedia"`
 
-	// StripEmbeddedFonts removes embedded font parts to save additional space.
+	// StripEmbeddedFonts removes ALL embedded font parts. It is the coarse
+	// "strip everything" switch (kept for backward compatibility and used by the
+	// Fonts tab's "select all"). For selective removal the frontend instead sends
+	// RemoveFontTypefaces; the strip step runs when either is set.
 	StripEmbeddedFonts bool `json:"stripEmbeddedFonts"`
+
+	// RemoveFontTypefaces lists the specific embedded font families (by typeface
+	// name, e.g. "Arial Unicode MS") to strip. This is what the per-font Fonts
+	// tab populates so the user can drop a huge fallback font while keeping small
+	// brand fonts. Empty means "strip none" unless StripEmbeddedFonts is set.
+	RemoveFontTypefaces []string `json:"removeFontTypefaces"`
 
 	// RemoveVideos replaces every embedded video's bytes with a tiny (~2 KB)
 	// placeholder MP4. The part, its relationships and its content type stay

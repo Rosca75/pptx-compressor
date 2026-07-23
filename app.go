@@ -99,9 +99,11 @@ func (a *App) AnalyzePptx(path string) AnalysisResult {
 	opts := defaultAnalysisOptions()
 	media := AnalyzeMedia(p, opts)
 
-	// Aggregate totals for the summary row.
+	// Aggregate media totals for the summary row, and note which parts are
+	// videos so the composition can separate them from images.
 	var totalMedia, totalEst int64
 	var unused, videos int
+	videoParts := map[string]bool{}
 	for _, m := range media {
 		totalMedia += m.Bytes
 		totalEst += m.EstimatedBytes
@@ -113,8 +115,15 @@ func (a *App) AnalyzePptx(path string) AnalysisResult {
 		}
 		if m.IsVideo {
 			videos++
+			videoParts[m.PartName] = true
 		}
 	}
+
+	// Embedded-font inventory (one row per family) and the on-disk composition
+	// split. Every bucket is a stored (compressed) size, so image+video+font+
+	// other reconciles to the file size on disk.
+	fonts := embeddedFonts(p)
+	imageBytes, videoBytes, fontBytes, otherBytes := fileComposition(p, videoParts)
 
 	// Cache the package for subsequent preview requests.
 	a.mu.Lock()
@@ -130,7 +139,12 @@ func (a *App) AnalyzePptx(path string) AnalysisResult {
 		UnusedCount:      unused,
 		VideoCount:       videos,
 		FfmpegAvailable:  ffmpegAvailable(),
-		HasEmbeddedFonts: hasEmbeddedFonts(p),
+		HasEmbeddedFonts: len(fonts) > 0,
+		Fonts:            fonts,
+		ImageBytes:       imageBytes,
+		VideoBytes:       videoBytes,
+		FontBytes:        fontBytes,
+		OtherBytes:       otherBytes,
 	}
 }
 

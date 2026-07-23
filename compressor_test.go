@@ -426,6 +426,184 @@ func TestStripEmbeddedFonts(t *testing.T) {
 	}
 }
 
+// buildTwoFontDeck writes a deck that embeds TWO font families: "Alpha" (two
+// weights, ~8 KB total) and "Beta" (one weight, ~1 KB). Used to exercise the
+// per-font inventory and selective strip.
+func buildTwoFontDeck(t *testing.T) string {
+	t.Helper()
+	contentTypes := `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+		`<Default Extension="xml" ContentType="application/xml"/>` +
+		`<Default Extension="fntdata" ContentType="application/x-fontdata"/>` +
+		`<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>` +
+		`</Types>`
+	packageRels := `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>` +
+		`</Relationships>`
+	presentation := `<?xml version="1.0"?><p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">` +
+		`<p:embeddedFontLst>` +
+		`<p:embeddedFont><p:font typeface="Alpha"/><p:regular r:id="rId2"/><p:bold r:id="rId3"/></p:embeddedFont>` +
+		`<p:embeddedFont><p:font typeface="Beta"/><p:regular r:id="rId4"/></p:embeddedFont>` +
+		`</p:embeddedFontLst>` +
+		`</p:presentation>`
+	presentationRels := `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>` +
+		`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font" Target="fonts/font1.fntdata"/>` +
+		`<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font" Target="fonts/font2.fntdata"/>` +
+		`<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font" Target="fonts/font3.fntdata"/>` +
+		`</Relationships>`
+	slide := `<?xml version="1.0"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"></p:sld>`
+	slideRels := `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "twofonts.pptx")
+	f, _ := os.Create(outPath)
+	defer f.Close()
+	zw := zip.NewWriter(f)
+	write := func(name string, data []byte) {
+		w, _ := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Deflate})
+		w.Write(data)
+	}
+	write("[Content_Types].xml", []byte(contentTypes))
+	write("_rels/.rels", []byte(packageRels))
+	write("ppt/presentation.xml", []byte(presentation))
+	write("ppt/_rels/presentation.xml.rels", []byte(presentationRels))
+	write("ppt/slides/slide1.xml", []byte(slide))
+	write("ppt/slides/_rels/slide1.xml.rels", []byte(slideRels))
+	// Fonts are stored uncompressed, as PowerPoint writes them (and as real,
+	// incompressible font data ends up), so the on-disk size equals the payload.
+	writeStored := func(name string, data []byte) {
+		w, _ := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store})
+		w.Write(data)
+	}
+	writeStored("ppt/fonts/font1.fntdata", make([]byte, 5000)) // Alpha regular
+	writeStored("ppt/fonts/font2.fntdata", make([]byte, 3000)) // Alpha bold
+	writeStored("ppt/fonts/font3.fntdata", make([]byte, 1000)) // Beta regular
+	zw.Close()
+	return outPath
+}
+
+func TestEmbeddedFontsInventory(t *testing.T) {
+	p, err := OpenPptx(buildTwoFontDeck(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fonts := embeddedFonts(p)
+	if len(fonts) != 2 {
+		t.Fatalf("want 2 families, got %d", len(fonts))
+	}
+	// Largest first: Alpha (8000) before Beta (1000).
+	if fonts[0].Typeface != "Alpha" || fonts[1].Typeface != "Beta" {
+		t.Errorf("order = %q, %q; want Alpha, Beta", fonts[0].Typeface, fonts[1].Typeface)
+	}
+	if fonts[0].Bytes != 8000 || fonts[0].Weights != 2 {
+		t.Errorf("Alpha bytes=%d weights=%d; want 8000/2", fonts[0].Bytes, fonts[0].Weights)
+	}
+	if fonts[1].Bytes != 1000 || fonts[1].Weights != 1 {
+		t.Errorf("Beta bytes=%d weights=%d; want 1000/1", fonts[1].Bytes, fonts[1].Weights)
+	}
+	if fontPartsBytes(p) != 9000 {
+		t.Errorf("fontPartsBytes = %d; want 9000", fontPartsBytes(p))
+	}
+}
+
+func TestStripSelectedFontKeepsOthers(t *testing.T) {
+	src := buildTwoFontDeck(t)
+	prog := runSync(t, src, CompressionOptions{Preset: "balanced", RemoveFontTypefaces: []string{"Alpha"}})
+	if prog.State != "done" {
+		t.Fatalf("state = %q errs=%v", prog.State, prog.Errors)
+	}
+	out, err := OpenPptx(prog.OutputPath)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	// Alpha's parts are gone; Beta's part remains.
+	if out.entry("ppt/fonts/font1.fntdata") != nil || out.entry("ppt/fonts/font2.fntdata") != nil {
+		t.Error("Alpha font parts not removed")
+	}
+	if out.entry("ppt/fonts/font3.fntdata") == nil {
+		t.Error("Beta font part was removed but should be kept")
+	}
+	pres := out.entry("ppt/presentation.xml")
+	if bytes.Contains(pres.data, []byte(`typeface="Alpha"`)) {
+		t.Error("Alpha embeddedFont element not removed")
+	}
+	if !bytes.Contains(pres.data, []byte(`typeface="Beta"`)) {
+		t.Error("Beta embeddedFont element wrongly removed")
+	}
+	// The list must survive because Beta is still embedded.
+	if !bytes.Contains(pres.data, []byte("embeddedFontLst")) {
+		t.Error("embeddedFontLst removed even though a family remains")
+	}
+	rels := out.entry("ppt/_rels/presentation.xml.rels")
+	if bytes.Contains(rels.data, []byte("font1.fntdata")) || bytes.Contains(rels.data, []byte("font2.fntdata")) {
+		t.Error("Alpha font relationships not removed")
+	}
+	if !bytes.Contains(rels.data, []byte("font3.fntdata")) {
+		t.Error("Beta font relationship wrongly removed")
+	}
+	if err := out.VerifyRelationships(); err != nil {
+		t.Errorf("relationships broken after selective font strip: %v", err)
+	}
+	// The remaining inventory should be just Beta.
+	if err := out.BuildRelsIndex(); err != nil {
+		t.Fatal(err)
+	}
+	rem := embeddedFonts(out)
+	if len(rem) != 1 || rem[0].Typeface != "Beta" {
+		t.Errorf("remaining fonts = %+v; want [Beta]", rem)
+	}
+}
+
+func TestStripAllSelectedFontsDropsList(t *testing.T) {
+	src := buildTwoFontDeck(t)
+	prog := runSync(t, src, CompressionOptions{Preset: "balanced", RemoveFontTypefaces: []string{"Alpha", "Beta"}})
+	if prog.State != "done" {
+		t.Fatalf("state = %q errs=%v", prog.State, prog.Errors)
+	}
+	out, err := OpenPptx(prog.OutputPath)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	pres := out.entry("ppt/presentation.xml")
+	if bytes.Contains(pres.data, []byte("embeddedFontLst")) {
+		t.Error("embeddedFontLst should be dropped when no family remains")
+	}
+	for _, part := range []string{"font1", "font2", "font3"} {
+		if out.entry("ppt/fonts/"+part+".fntdata") != nil {
+			t.Errorf("%s not removed", part)
+		}
+	}
+	if err := out.VerifyRelationships(); err != nil {
+		t.Errorf("relationships broken: %v", err)
+	}
+}
+
+func TestAnalyzeComposition(t *testing.T) {
+	app := &App{}
+	res := app.AnalyzePptx(buildTwoFontDeck(t))
+	if res.Error != "" {
+		t.Fatalf("analyze error: %s", res.Error)
+	}
+	if len(res.Fonts) != 2 {
+		t.Errorf("Fonts len = %d; want 2", len(res.Fonts))
+	}
+	if res.FontBytes != 9000 {
+		t.Errorf("FontBytes = %d; want 9000", res.FontBytes)
+	}
+	if !res.HasEmbeddedFonts {
+		t.Error("HasEmbeddedFonts should be true")
+	}
+	// The four composition buckets must never exceed the whole file.
+	sum := res.ImageBytes + res.VideoBytes + res.FontBytes + res.OtherBytes
+	if sum > res.FileBytes {
+		t.Errorf("composition sum %d exceeds fileBytes %d", sum, res.FileBytes)
+	}
+	if res.FontBytes > res.FileBytes {
+		t.Errorf("FontBytes %d exceeds fileBytes %d", res.FontBytes, res.FileBytes)
+	}
+}
+
 func TestAlreadyOptimizedDeckKeepsOriginals(t *testing.T) {
 	// A deck whose only image is a small, already-compressed JPEG should mostly
 	// report "kept" (no gain) rather than enlarge anything.

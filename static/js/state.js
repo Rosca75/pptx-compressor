@@ -16,6 +16,9 @@ export const state = {
    */
   ffmpegAvailable: false,
 
+  /** Which category tab is active in the main area: 'images' | 'videos' | 'fonts'. */
+  activeTab: 'images',
+
   /** Interval timer ID for polling compression progress (null when idle). */
   pollTimer: null,
 
@@ -41,6 +44,8 @@ export const state = {
     useWebp: false,
     removeUnusedMedia: true,
     stripEmbeddedFonts: false,
+    /** Embedded font families to strip, by typeface name (set from the Fonts tab). */
+    removeFontTypefaces: [],
     replaceOriginal: false,
     removeVideos: false,
     videoCompression: 'none',
