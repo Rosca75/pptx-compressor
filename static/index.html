@@ -149,6 +149,27 @@
       <input type="number" id="opt-max-edge" value="0" min="0" disabled>
     </div>
 
+    <!-- Group: resize to on-slide size (smart resize by usage) -->
+    <div class="option-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="opt-resize-to-display" disabled>
+        Resize images to on-slide size
+      </label>
+      <label class="option-label" for="opt-display-dpi">Target quality</label>
+      <select id="opt-display-dpi" disabled>
+        <option value="300">Large — 300 DPI</option>
+        <option value="220">Print — 220 DPI</option>
+        <option value="150" selected>Balanced — 150 DPI</option>
+        <option value="96">Screen only — 96 DPI</option>
+      </select>
+      <p class="option-note">
+        Downscales each image to the pixels it actually needs at the size it is
+        shown on the slide — often a big saving with no visible quality loss.
+        Never upscales; images whose slide size can't be determined fall back to
+        the max-edge cap above.
+      </p>
+    </div>
+
     <!-- Group: minimum size threshold -->
     <div class="option-group">
       <label class="option-label" for="opt-min-size">Skip images under (KB)</label>

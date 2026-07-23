@@ -63,6 +63,18 @@ type MediaInfo struct {
 	Width  int `json:"width"`
 	Height int `json:"height"`
 
+	// DisplayMaxEdgeEmu is the longest edge, in EMU (English Metric Units,
+	// 914400 per inch), of the LARGEST box this image is displayed in across
+	// every slide/layout/master it is placed on. It is the on-slide "how big
+	// does this picture actually appear" measurement that powers the optional
+	// "resize to on-slide size" feature: a huge photo shown in a tiny frame
+	// needs far fewer pixels than it carries. Zero means the display size could
+	// not be determined (the image is unplaced, sits only inside a grouped
+	// shape, or has no explicit extent) — in that case resizing falls back to
+	// the global MaxEdgePx cap. Filled in by AnalyzeMedia from
+	// PptxFile.DisplayEdgeEmu.
+	DisplayMaxEdgeEmu int64 `json:"displayMaxEdgeEmu"`
+
 	// Bytes is the current size of the part inside the ZIP (uncompressed image
 	// bytes, i.e. the stored file length).
 	Bytes int64 `json:"bytes"`
@@ -172,6 +184,21 @@ type CompressionOptions struct {
 	// MaxEdgePx caps the longest edge in pixels; larger images are downscaled
 	// with CatmullRom. Zero means "do not downscale".
 	MaxEdgePx int `json:"maxEdgePx"`
+
+	// ResizeToDisplaySize enables the "smart resize by usage" feature: each
+	// image is downscaled to the pixels it actually needs at the size it is
+	// displayed on the slide (see MediaInfo.DisplayMaxEdgeEmu), converted to
+	// pixels at DisplayTargetDpi. It combines with MaxEdgePx by taking the
+	// SMALLER cap, never enlarges anything, and falls back to MaxEdgePx when an
+	// image's on-slide size is unknown. Opt-in — off by default.
+	ResizeToDisplaySize bool `json:"resizeToDisplaySize"`
+
+	// DisplayTargetDpi is the target rendering resolution (dots per inch) used
+	// to turn an image's physical on-slide size into a needed pixel count when
+	// ResizeToDisplaySize is on. Higher = crisper but larger: 300 (large/heavy
+	// zoom), 220 (print), 150 (balanced — the default), 96 (screen only). Zero
+	// resolves to 150 in resolveOptions.
+	DisplayTargetDpi int `json:"displayTargetDpi"`
 
 	// MinSizeKB skips any image smaller than this threshold (in KB), since tiny
 	// images rarely benefit from recompression.

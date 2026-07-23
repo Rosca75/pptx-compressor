@@ -23,6 +23,8 @@ function els() {
     quality:       document.getElementById('opt-jpeg-quality'),
     qualityValue:  document.getElementById('opt-jpeg-quality-value'),
     maxEdge:       document.getElementById('opt-max-edge'),
+    resizeToDisplay: document.getElementById('opt-resize-to-display'),
+    displayDpi:    document.getElementById('opt-display-dpi'),
     minSize:       document.getElementById('opt-min-size'),
     convertPng:    document.getElementById('opt-convert-opaque-png'),
     quantizePng:   document.getElementById('opt-quantize-transparent-png'),
@@ -62,6 +64,20 @@ export function initOptions() {
   // Changing the preset seeds quality / max-edge / format toggles.
   if (e.preset) {
     e.preset.addEventListener('change', () => applyPreset(e.preset.value));
+  }
+
+  // "Resize to on-slide size": mirror the toggle into state and enable/disable
+  // the target-quality (DPI) select — the DPI only matters when resizing is on.
+  if (e.resizeToDisplay) {
+    e.resizeToDisplay.addEventListener('change', () => {
+      state.options.resizeToDisplaySize = e.resizeToDisplay.checked;
+      syncDisplayDpiEnabled();
+    });
+  }
+  if (e.displayDpi) {
+    e.displayDpi.addEventListener('change', () => {
+      state.options.displayTargetDpi = parseInt(e.displayDpi.value, 10);
+    });
   }
 
   // Toggling WebP shows/hides the compatibility warning.
@@ -149,6 +165,16 @@ function syncVideoCompressionEnabled() {
 }
 
 /**
+ * The target-quality (DPI) select is usable only when "Resize to on-slide size"
+ * is ticked — the DPI has no effect otherwise.
+ */
+function syncDisplayDpiEnabled() {
+  const e = els();
+  if (!e.displayDpi) return;
+  e.displayDpi.disabled = !(e.resizeToDisplay && e.resizeToDisplay.checked);
+}
+
+/**
  * Apply a preset's defaults to the fine-grained controls and state.
  * The user can still override any control afterwards.
  * @param {string} name - "light" | "balanced" | "aggressive"
@@ -178,6 +204,9 @@ function applyPreset(name) {
 export function setOptionsEnabled(enabled) {
   document.querySelectorAll('.options-panel input, .options-panel select')
     .forEach((el) => { el.disabled = !enabled; });
+  // The DPI select stays disabled until "Resize to on-slide size" is ticked,
+  // even after the blanket enable above.
+  if (enabled) syncDisplayDpiEnabled();
 }
 
 /**
@@ -197,6 +226,8 @@ export function readOptions() {
     preset: (e.preset && e.preset.value) || 'balanced',
     jpegQuality: intVal(e.quality, 82),
     maxEdgePx: intVal(e.maxEdge, 0),
+    resizeToDisplaySize: !!(e.resizeToDisplay && e.resizeToDisplay.checked),
+    displayTargetDpi: intVal(e.displayDpi, 150),
     minSizeKB: intVal(e.minSize, 20),
     convertOpaquePng: !!(e.convertPng && e.convertPng.checked),
     quantizeTransparentPng: !!(e.quantizePng && e.quantizePng.checked),

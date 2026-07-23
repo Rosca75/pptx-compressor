@@ -98,6 +98,13 @@ func resolveOptions(opts CompressionOptions) CompressionOptions {
 	if opts.MinSizeKB == 0 {
 		opts.MinSizeKB = 10
 	}
+
+	// Default the resize-to-display-size DPI to a balanced 150 when unset. Note
+	// ResizeToDisplaySize itself is NOT seeded by any preset — it is strictly
+	// opt-in, off unless the user ticks it.
+	if opts.DisplayTargetDpi == 0 {
+		opts.DisplayTargetDpi = 150
+	}
 	return opts
 }
 
@@ -159,6 +166,9 @@ func AnalyzeMedia(p *PptxFile, opts CompressionOptions) []MediaInfo {
 				info.Width = cfg.Width
 				info.Height = cfg.Height
 			}
+			// How large is this image actually shown on the slide? Drives the
+			// optional resize-to-display-size cap (0 when unknown).
+			info.DisplayMaxEdgeEmu = p.DisplayEdgeEmu(name)
 			// Alpha requires a full decode; only PNG/WebP/GIF/BMP/TIFF can carry
 			// it, and even then we sample actual pixels (see codec.go).
 			if format == fmtPNG || format == fmtWebP || format == fmtBMP || format == fmtTIFF {
@@ -282,7 +292,7 @@ func estimateAction(m MediaInfo, opts CompressionOptions) (string, int64) {
 		// Could not read dimensions — assume no gain rather than over-promise.
 		return actSkip, m.Bytes
 	}
-	pixels = downscaledPixels(m.Width, m.Height, opts.MaxEdgePx)
+	pixels = downscaledPixels(m.Width, m.Height, effectiveMaxEdge(m, opts))
 
 	// Decide the target encoding path.
 	action := actSkip
