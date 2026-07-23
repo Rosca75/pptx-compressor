@@ -106,7 +106,7 @@ function rowHtml(m) {
     <td class="thumb-cell"><div class="thumb" data-part="${escapeHtml(m.partName)}"></div></td>
     <td class="part-name" title="${escapeHtml(m.partName)}">${escapeHtml(shortName(m.partName))}</td>
     <td>${escapeHtml(m.isVideo ? 'video' : m.format)}</td>
-    <td class="num">${formatDimensions(m.width, m.height)}</td>
+    <td class="num"${dimTitle(m)}>${formatDimensions(m.width, m.height)}</td>
     <td class="num">${formatBytes(m.bytes)}</td>
     <td>${m.hasAlpha ? 'yes' : '—'}</td>
     <td>${usageCell(m)}</td>
@@ -120,6 +120,22 @@ function rowHtml(m) {
       </select>
     </td>
   </tr>`;
+}
+
+/**
+ * Build a title (tooltip) attribute for the dimensions cell showing how large
+ * the image is actually displayed on the slide, and the pixels it needs at the
+ * currently-selected target DPI. Empty when the display size is unknown.
+ */
+function dimTitle(m) {
+  const emu = m.displayMaxEdgeEmu || 0;
+  if (emu <= 0) return '';
+  const EMU_PER_INCH = 914400;
+  const inches = emu / EMU_PER_INCH;
+  const cm = (inches * 2.54).toFixed(1);
+  const dpi = (state.options && state.options.displayTargetDpi) || 150;
+  const px = Math.round(inches * dpi);
+  return ` title="Shown on slide at up to ${cm} cm — needs ~${px}px at ${dpi} DPI"`;
 }
 
 /** Map an action label to a badge colour class (see table.css). */

@@ -128,6 +128,14 @@ type PptxFile struct {
 	// BuildRelsIndex() from the presentation's slide list — the slideN.xml
 	// file names do NOT reliably encode deck order (slides get reordered).
 	slideOrder map[string]int
+
+	// displayEdgeEmu maps a media part name to the longest edge, in EMU, of the
+	// LARGEST box that part is displayed in across every slide/layout/master it
+	// appears on (crop-inflated; see buildDisplaySizes). This is the on-slide
+	// "how big does the picture actually render" measurement used by the
+	// optional resize-to-display-size feature. Built by BuildRelsIndex(); a part
+	// absent from the map has no known display size.
+	displayEdgeEmu map[string]int64
 }
 
 // =============================================================================
@@ -397,6 +405,235 @@ func (p *PptxFile) slidePageNumber(slidePart string) int {
 	return n
 }
 
+// =============================================================================
+// Display sizes — how large is each image actually shown on the slide?
+// =============================================================================
+//
+// A picture's file may be 4000 px wide while the frame it is dropped into on the
+// slide is only a few centimetres. Those wasted pixels are the single biggest,
+// lowest-risk saving available — shrinking the image to the size it is actually
+// displayed at is invisible to the eye. To do that we must read the picture's
+// on-slide box, which lives in the slide XML (never parsed structurally
+// elsewhere in this file — placement detection only substring-scans the bytes).
+//
+// OOXML shape geometry (all inside "<p:cSld><p:spTree>"):
+//
+//	<p:pic>                         a picture shape
+//	  <p:blipFill>
+//	    <a:blip r:embed="rId5"/>    -> relationship to the media part
+//	    <a:srcRect l=".." r=".."/>  -> optional crop, in 1000ths of a percent
+//	  <p:spPr>
+//	    <a:xfrm><a:ext cx=".." cy=".."/></a:xfrm>   the display box, in EMU
+//
+// An image can also be a shape's picture FILL: "<p:sp><p:spPr><a:blipFill>..."
+// with the extent in the same "<p:spPr><a:xfrm><a:ext>".
+//
+// EMU = English Metric Units, 914400 per inch. 1 inch at the target DPI is the
+// pixel budget for that inch of slide; see emuToPx.
+//
+// v1 scope / safety:
+//   - We measure ONLY shapes that are DIRECT children of the shape tree. A
+//     picture nested inside a "<p:grpSp>" group is intentionally skipped
+//     (returns no display size, so it falls back to the global cap): a group
+//     can scale its children UP, and trusting the child's own <a:ext> could
+//     make us over-shrink. Under-measuring is safe; over-shrinking is not.
+//   - Cropped pictures inflate their needed size by the visible fraction, so
+//     the shown region keeps full resolution (see inflateForCrop).
+//   - The MAX box across all placements wins (an image reused at different
+//     sizes must satisfy its largest appearance).
+
+// emuPerInch is the number of EMU (English Metric Units) in one inch. OOXML
+// expresses all shape geometry in EMU.
+const emuPerInch = 914400
+
+// emuToPx converts a length in EMU to pixels at the given DPI, rounded to the
+// nearest pixel. Returns 0 for non-positive inputs.
+func emuToPx(emu int64, dpi int) int {
+	if emu <= 0 || dpi <= 0 {
+		return 0
+	}
+	return int(float64(emu)/float64(emuPerInch)*float64(dpi) + 0.5)
+}
+
+// XML models for reading picture display extents. Field tags use unqualified
+// local names so encoding/xml matches them in ANY namespace (the whole file
+// relies on this — see presentationXML above), which also transparently matches
+// the namespaced r:embed attribute. NOTE: encoding/xml does NOT support putting
+// ",attr" at the end of a ">"-separated element path (e.g. "blipFill>blip>embed,attr"
+// silently fails), so the nesting below is expressed with explicit structs.
+//
+// shapeTreeXML captures just the DIRECT picture/shape children of a slide,
+// layout or master's shape tree. Grouped shapes (<p:grpSp>) are deliberately
+// not descended into (see the safety note above).
+type shapeTreeXML struct {
+	Pics   []picExtXML `xml:"cSld>spTree>pic"`
+	Shapes []spExtXML  `xml:"cSld>spTree>sp"`
+}
+
+// picExtXML is one <p:pic>: its picture fill (embed + crop) and display extent.
+type picExtXML struct {
+	BlipFill blipFillXML `xml:"blipFill"`
+	Ext      extXML      `xml:"spPr>xfrm>ext"`
+}
+
+// spExtXML is one <p:sp> whose fill is a picture (blipFill lives under spPr).
+type spExtXML struct {
+	BlipFill blipFillXML `xml:"spPr>blipFill"`
+	Ext      extXML      `xml:"spPr>xfrm>ext"`
+}
+
+// blipFillXML is an <a:blipFill> holding the media relationship and any crop.
+type blipFillXML struct {
+	Blip    blipXML    `xml:"blip"`
+	SrcRect srcRectXML `xml:"srcRect"`
+}
+
+// blipXML is an <a:blip r:embed="rIdN"/> — the link to the media part.
+type blipXML struct {
+	Embed string `xml:"embed,attr"`
+}
+
+// extXML is an <a:ext cx=".." cy=".."/> display box in EMU.
+type extXML struct {
+	Cx int64 `xml:"cx,attr"`
+	Cy int64 `xml:"cy,attr"`
+}
+
+// srcRectXML is an <a:srcRect l r t b/> crop. Each value is in 1000ths of a
+// percent of the source edge that is cropped OFF that side (so l=25000 means
+// the left 25% is hidden). Absent attributes default to 0 (no crop).
+type srcRectXML struct {
+	L int `xml:"l,attr"`
+	R int `xml:"r,attr"`
+	T int `xml:"t,attr"`
+	B int `xml:"b,attr"`
+}
+
+// buildDisplaySizes fills p.displayEdgeEmu by scanning every slide, layout and
+// master for picture shapes, resolving each to its media part, and recording
+// the largest (crop-inflated) display edge per part. Read-only; any part that
+// fails to parse is simply skipped. Called from BuildRelsIndex.
+func (p *PptxFile) buildDisplaySizes() {
+	p.displayEdgeEmu = map[string]int64{}
+
+	for _, e := range p.Entries {
+		if !isMeasurablePart(e.name) {
+			continue
+		}
+
+		// Parse the direct picture/shape children of this part's shape tree.
+		var st shapeTreeXML
+		if err := xml.Unmarshal(e.data, &st); err != nil {
+			continue // not shaped as expected — skip, no display size recorded
+		}
+		if len(st.Pics) == 0 && len(st.Shapes) == 0 {
+			continue
+		}
+
+		// Build this part's rId -> media-part map from its own .rels file (same
+		// idiom as buildSlideOrder). Without rels we cannot resolve any embed.
+		byID := p.relIDToMedia(e.name)
+		if len(byID) == 0 {
+			continue
+		}
+
+		// record folds one picture's extent into the running per-part maximum.
+		record := func(embed string, ext extXML, sr srcRectXML) {
+			if embed == "" || ext.Cx <= 0 || ext.Cy <= 0 {
+				return
+			}
+			part, ok := byID[embed]
+			if !ok || !strings.HasPrefix(part, mediaPrefix) {
+				return
+			}
+			cx, cy := inflateForCrop(ext.Cx, ext.Cy, sr)
+			edge := cx
+			if cy > edge {
+				edge = cy
+			}
+			if edge > p.displayEdgeEmu[part] {
+				p.displayEdgeEmu[part] = edge
+			}
+		}
+
+		for _, pic := range st.Pics {
+			record(pic.BlipFill.Blip.Embed, pic.Ext, pic.BlipFill.SrcRect)
+		}
+		for _, sp := range st.Shapes {
+			record(sp.BlipFill.Blip.Embed, sp.Ext, sp.BlipFill.SrcRect)
+		}
+	}
+}
+
+// isMeasurablePart reports whether an entry is a slide, layout or master XML
+// part whose shape tree we scan for picture display sizes (excludes the _rels
+// sidecars, which also live under these folders).
+func isMeasurablePart(name string) bool {
+	if !strings.HasSuffix(name, ".xml") || strings.Contains(name, "/_rels/") {
+		return false
+	}
+	return strings.HasPrefix(name, "ppt/slides/") ||
+		strings.HasPrefix(name, "ppt/slideLayouts/") ||
+		strings.HasPrefix(name, "ppt/slideMasters/")
+}
+
+// relIDToMedia parses the .rels file that belongs to ownerPart and returns a
+// map from each relationship id (e.g. "rId5") to the media part it targets
+// (only relationships that resolve under ppt/media/ are included). Returns an
+// empty map when the .rels file is missing or unparseable.
+func (p *PptxFile) relIDToMedia(ownerPart string) map[string]string {
+	out := map[string]string{}
+
+	// The rels sidecar for "<dir>/<file>" is "<dir>/_rels/<file>.rels".
+	relsName := path.Dir(ownerPart) + "/_rels/" + path.Base(ownerPart) + ".rels"
+	re := p.entry(relsName)
+	if re == nil {
+		return out
+	}
+
+	var rf relsFile
+	if err := xml.Unmarshal(re.data, &rf); err != nil {
+		return out
+	}
+	base := relsBaseDir(relsName)
+	for _, rel := range rf.Relationships {
+		if strings.EqualFold(rel.Mode, "External") {
+			continue
+		}
+		target := resolveTarget(base, rel.Target)
+		if strings.HasPrefix(target, mediaPrefix) {
+			out[rel.Id] = target
+		}
+	}
+	return out
+}
+
+// inflateForCrop expands a display box so it represents the pixels the FULL
+// source image needs, not just the visible crop. If only 50% of the width is
+// shown (l+r = 50000), the whole image must carry twice the box's width to keep
+// that visible half at full resolution. srcRect values are 1000ths of a percent.
+// Inflation only ever enlarges the need; degenerate fractions (<=0, from a crop
+// of 100%+, or >=1, meaning no crop / a negative outset) are ignored so a bad
+// srcRect can never shrink the box below its actual size.
+func inflateForCrop(cx, cy int64, sr srcRectXML) (int64, int64) {
+	wFrac := 1 - float64(sr.L+sr.R)/100000.0
+	hFrac := 1 - float64(sr.T+sr.B)/100000.0
+	if wFrac > 0 && wFrac < 1 {
+		cx = int64(float64(cx)/wFrac + 0.5)
+	}
+	if hFrac > 0 && hFrac < 1 {
+		cy = int64(float64(cy)/hFrac + 0.5)
+	}
+	return cx, cy
+}
+
+// DisplayEdgeEmu returns the largest on-slide display edge (in EMU) recorded for
+// a media part, or 0 when its display size is unknown. BuildRelsIndex must have
+// run first.
+func (p *PptxFile) DisplayEdgeEmu(partName string) int64 {
+	return p.displayEdgeEmu[partName]
+}
+
 // BuildRelsIndex parses every *.rels file in the package and builds relsIndex:
 // a map from each referenced media part name to the list of relationships that
 // point at it. A media part's reference count is len(relsIndex[partName]).
@@ -412,6 +649,11 @@ func (p *PptxFile) BuildRelsIndex() error {
 	// Also (re)build the slide-order map: MediaPlacement needs it to translate
 	// slide parts into the deck page numbers shown in the UI.
 	p.buildSlideOrder()
+
+	// And (re)build the on-slide display-size map so the resize-to-display-size
+	// feature knows how large each image actually appears. Read-only; failures
+	// for individual parts are skipped rather than aborting the whole index.
+	p.buildDisplaySizes()
 
 	for _, e := range p.Entries {
 		if !strings.HasSuffix(e.name, ".rels") {

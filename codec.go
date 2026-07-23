@@ -403,6 +403,31 @@ type Action struct {
 // isNoOp reports whether the action means "leave the bytes exactly as they are".
 func (a Action) isNoOp() bool { return a.Kind == actSkip || a.Kind == actKept }
 
+// effectiveMaxEdge combines the two downscale caps into the single longest-edge
+// value the pipeline downscales to:
+//
+//   - the global MaxEdgePx (0 = no global cap), and
+//   - the per-image "resize to on-slide size" cap, derived from how large the
+//     image is actually displayed (m.DisplayMaxEdgeEmu) at the chosen DPI.
+//
+// It returns the SMALLER positive cap (0 = no cap at all), so enabling display
+// resize can only ever shrink more, never less, and combines cleanly with a
+// manual max-edge. When the display size is unknown (0) or the feature is off,
+// only MaxEdgePx applies — so grouped/unplaced images safely fall back to the
+// existing behaviour. resizeToMaxEdge still never upscales, so a cap larger than
+// the image is a harmless no-op.
+func effectiveMaxEdge(m MediaInfo, opts CompressionOptions) int {
+	edge := opts.MaxEdgePx // 0 means "no global cap"
+	if opts.ResizeToDisplaySize && m.DisplayMaxEdgeEmu > 0 {
+		if px := emuToPx(m.DisplayMaxEdgeEmu, opts.DisplayTargetDpi); px > 0 {
+			if edge == 0 || px < edge {
+				edge = px
+			}
+		}
+	}
+	return edge
+}
+
 // DecideAction applies the decision matrix from BUILD.md to a single media part
 // and returns the plan. It does NOT encode anything — it only decides. The
 // never-larger guarantee is enforced later, in the pipeline, after encoding.
@@ -458,7 +483,9 @@ func DecideAction(m MediaInfo, opts CompressionOptions) Action {
 	}
 
 	q := opts.JpegQuality
-	edge := opts.MaxEdgePx
+	// The downscale cap is the tighter of the global MaxEdgePx and the per-image
+	// on-slide display size (when "resize to display size" is on).
+	edge := effectiveMaxEdge(m, opts)
 
 	// WebP opt-in overrides the format choice for any raster.
 	if opts.UseWebp && isRasterFormat(m.Format) {

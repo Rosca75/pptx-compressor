@@ -33,6 +33,8 @@ export const state = {
     preset: 'balanced',
     jpegQuality: 82,
     maxEdgePx: 0,
+    resizeToDisplaySize: false,
+    displayTargetDpi: 150,
     minSizeKB: 20,
     convertOpaquePng: true,
     quantizeTransparentPng: true,
