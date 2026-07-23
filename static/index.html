@@ -27,8 +27,10 @@
       <div class="topbar-field topbar-file">
         <label for="pptx-path">PowerPoint file</label>
         <div class="input-group">
-          <input type="text" id="pptx-path" placeholder="Select a .pptx file…" readonly>
-          <button class="btn btn-outline btn-sm" id="select-btn">
+          <input type="text" id="pptx-path" placeholder="Select a .pptx file…" readonly
+                 title="The PowerPoint file you want to shrink. This file is only read — the compressed result is always written to a separate copy, so your original is never changed.">
+          <button class="btn btn-outline btn-sm" id="select-btn"
+                  title="Browse for a .pptx file to compress. Nothing is changed on disk until you click Compress.">
             <i data-feather="folder"></i> Open…
           </button>
         </div>
@@ -36,13 +38,16 @@
 
       <!-- Primary actions -->
       <div class="topbar-buttons">
-        <button class="btn btn-primary" id="analyze-btn" disabled>
+        <button class="btn btn-primary" id="analyze-btn" disabled
+                title="Inspect the file without changing it: list every image, video and embedded font, show where the file's size actually comes from, and estimate how much each could be shrunk. Always do this before compressing.">
           <i data-feather="search"></i> Analyze
         </button>
-        <button class="btn btn-primary" id="compress-btn" disabled>
+        <button class="btn btn-primary" id="compress-btn" disabled
+                title="Recompress the file using the options on the right, writing a smaller copy next to the original. Only images that would actually get smaller are re-encoded; everything else is copied through untouched.">
           <i data-feather="minimize-2"></i> Compress
         </button>
-        <button class="btn btn-danger" id="cancel-btn" style="display:none">
+        <button class="btn btn-danger" id="cancel-btn" style="display:none"
+                title="Stop the compression in progress. The partly-written output copy is discarded; your original file is never affected.">
           <i data-feather="x-circle"></i> Cancel
         </button>
       </div>
@@ -83,7 +88,8 @@
       <div id="analysis-view" style="display:none">
 
         <!-- File-composition breakdown (images / videos / fonts / other). -->
-        <div class="composition" id="composition">
+        <div class="composition" id="composition"
+             title="Shows how the file's total size is split between images, videos, embedded fonts and everything else — so you can see at a glance which category is worth compressing.">
           <div class="composition-head">
             <span class="composition-title">File composition</span>
             <span class="composition-total" id="composition-total"></span>
@@ -94,15 +100,18 @@
 
         <!-- Category tabs. A tab is greyed out when its category is empty. -->
         <div class="tab-bar" id="tab-bar">
-          <button class="tab-btn" data-tab="images" id="tab-btn-images">
+          <button class="tab-btn" data-tab="images" id="tab-btn-images"
+                  title="Images are the main compression target: they are recompressed (and optionally downscaled or converted to a lighter format) to reclaim space. Shows the image count, their total size, and the estimated saving.">
             <span class="tab-name">Images</span>
             <span class="tab-meta" id="tab-meta-images">—</span>
           </button>
-          <button class="tab-btn" data-tab="videos" id="tab-btn-videos">
+          <button class="tab-btn" data-tab="videos" id="tab-btn-videos"
+                  title="Videos are often the biggest single chunk of a deck. Here you can replace them with a tiny placeholder or recompress them with ffmpeg. Shows the video count and their total size.">
             <span class="tab-name">Videos</span>
             <span class="tab-meta" id="tab-meta-videos">—</span>
           </button>
-          <button class="tab-btn" data-tab="fonts" id="tab-btn-fonts">
+          <button class="tab-btn" data-tab="fonts" id="tab-btn-fonts"
+                  title="Embedded fonts travel inside the file and are stored uncompressed. They can't be shrunk, only removed. Shows how many families are embedded and how much space removing them would free.">
             <span class="tab-name">Fonts</span>
             <span class="tab-meta" id="tab-meta-fonts">—</span>
           </button>
@@ -114,7 +123,8 @@
                ticked. Applies a single override to every selected image. -->
           <div class="bulk-actions" id="bulk-actions" style="display:none">
             <span class="bulk-count" id="bulk-count">0 selected</span>
-            <label class="bulk-field">
+            <label class="bulk-field"
+                   title="Force the same handling on every ticked image at once. Auto = let the app decide the best compression; Skip = keep the image exactly as it is; Remove = delete the image bytes entirely.">
               Set override
               <select id="bulk-override">
                 <option value="auto">Auto</option>
@@ -122,25 +132,27 @@
                 <option value="remove">Remove</option>
               </select>
             </label>
-            <button class="btn btn-primary btn-sm" id="bulk-apply">Apply to selected</button>
-            <button class="btn btn-outline btn-sm" id="bulk-clear">Clear selection</button>
+            <button class="btn btn-primary btn-sm" id="bulk-apply"
+                    title="Apply the chosen handling above to all currently ticked images.">Apply to selected</button>
+            <button class="btn btn-outline btn-sm" id="bulk-clear"
+                    title="Untick every image and hide this bar.">Clear selection</button>
           </div>
 
           <!-- Analysis table (populated by table.js after analysis) -->
           <table class="media-table" id="media-table" style="display:none">
             <thead>
               <tr>
-                <th class="select-col"><input type="checkbox" id="select-all" title="Select all"></th>
-                <th>Preview</th>
-                <th class="sortable" data-sort="partName">Part</th>
-                <th class="sortable" data-sort="format">Format</th>
-                <th class="sortable" data-sort="pixels">Dimensions</th>
-                <th class="sortable num" data-sort="bytes">Size</th>
-                <th class="sortable" data-sort="hasAlpha">Alpha</th>
-                <th class="sortable" data-sort="usedOnSlide">Usage</th>
-                <th>Proposed action</th>
-                <th class="sortable num" data-sort="estimatedBytes">Est. size</th>
-                <th>Override</th>
+                <th class="select-col"><input type="checkbox" id="select-all" title="Tick every image, so you can set one handling for all of them at once."></th>
+                <th title="A thumbnail of the image so you can recognise it before deciding how to compress it.">Preview</th>
+                <th class="sortable" data-sort="partName" title="The image's internal name inside the .pptx archive. Click to sort by name.">Part</th>
+                <th class="sortable" data-sort="format" title="The image's current file format (JPEG, PNG, …). The format drives the compression choice — e.g. an opaque PNG can often be converted to a much smaller JPEG. Click to sort.">Format</th>
+                <th class="sortable" data-sort="pixels" title="The image's real pixel size. Images far larger than they appear on the slide are prime candidates for downscaling. Click to sort by pixel count.">Dimensions</th>
+                <th class="sortable num" data-sort="bytes" title="How much space this image takes up in the file today. Click to sort — the biggest images give the biggest savings.">Size</th>
+                <th class="sortable" data-sort="hasAlpha" title="Whether the image has real transparency (an alpha channel). Fully-opaque images can be converted to JPEG for a bigger saving; genuinely transparent ones must stay PNG or WebP. Click to sort.">Alpha</th>
+                <th class="sortable" data-sort="usedOnSlide" title="Where the image is actually used: on a slide, only on a layout/master, or nowhere. Unused images can be dropped entirely. Click to sort.">Usage</th>
+                <th title="What the app will do to this image with the current options — e.g. recompress, convert to JPEG, downscale, or keep as-is.">Proposed action</th>
+                <th class="sortable num" data-sort="estimatedBytes" title="The estimated size of this image after compression, and the saving versus today. Click to sort by projected size.">Est. size</th>
+                <th title="Override the automatic decision for this one image. Auto = let the app choose; Skip = keep it unchanged; Remove = delete it from the file.">Override</th>
               </tr>
             </thead>
             <tbody id="media-tbody"></tbody>
@@ -151,12 +163,15 @@
              list of the video parts found. -->
         <div class="tab-panel" id="panel-videos" style="display:none">
           <div class="option-group" id="video-options">
-            <label class="checkbox-label">
+            <label class="checkbox-label"
+                   title="Strip out the video files and drop in a tiny placeholder instead. This gives the largest possible saving on video-heavy decks, but the videos can no longer be played — only their poster/preview image remains.">
               <input type="checkbox" id="opt-remove-videos" disabled>
               Remove videos
             </label>
-            <label class="option-label" for="opt-video-compression">MP4 video compression</label>
-            <select id="opt-video-compression" disabled>
+            <label class="option-label" for="opt-video-compression"
+                   title="Re-encode the MP4 videos to a smaller size while keeping them playable. Higher levels shrink the file more but visibly lower the video quality. Requires ffmpeg to be installed; disabled if 'Remove videos' is ticked.">MP4 video compression</label>
+            <select id="opt-video-compression" disabled
+                    title="How hard to compress the videos: from 'Light' (barely noticeable) down to 'Extreme' (smallest file, clearly lower quality). 'None' keeps the videos untouched.">
               <option value="none" selected>None — keep videos as-is</option>
               <option value="light">Light — near-original quality</option>
               <option value="balanced">Balanced — capped at 720p-class</option>
@@ -194,7 +209,8 @@
             Embedded fonts are stored uncompressed and cannot be shrunk — only
             removed. Tick the fonts you do not need travelling inside the file.
           </p>
-          <label class="checkbox-label fonts-selectall">
+          <label class="checkbox-label fonts-selectall"
+                 title="Tick every embedded font family for removal at once. Removing them all frees the most space, but any font not installed on the viewer's computer will be substituted, so text may look different.">
             <input type="checkbox" id="fonts-select-all" disabled>
             Select all
           </label>
@@ -223,7 +239,8 @@
     <div class="panel-header">Options</div>
 
     <!-- Group: preset -->
-    <div class="option-group">
+    <div class="option-group"
+         title="A one-click starting point that sets the quality and size limits below for you. Light = keep near-original quality, smaller saving; Balanced = strong saving with little visible change (recommended); Aggressive = smallest file, some quality loss. You can still fine-tune any setting afterwards.">
       <label class="option-label" for="opt-preset">Compression preset</label>
       <select id="opt-preset" disabled>
         <option value="light">Light</option>
@@ -233,7 +250,8 @@
     </div>
 
     <!-- Group: JPEG quality -->
-    <div class="option-group">
+    <div class="option-group"
+         title="How much detail to keep when saving photos as JPEG. Lower numbers make smaller files but can show blocky artefacts; higher numbers look better but save less. Around 80 is usually indistinguishable from the original.">
       <label class="option-label" for="opt-jpeg-quality">JPEG quality</label>
       <div class="range-group">
         <input type="range" id="opt-jpeg-quality" min="1" max="100" value="82" disabled>
@@ -242,18 +260,21 @@
     </div>
 
     <!-- Group: max longest edge -->
-    <div class="option-group">
+    <div class="option-group"
+         title="Cap the longest side of every image, in pixels — any image bigger than this is scaled down, which is often the single biggest saving for photos taken from a phone or camera. Leave at 0 for no limit.">
       <label class="option-label" for="opt-max-edge">Max longest edge (px, 0 = no limit)</label>
       <input type="number" id="opt-max-edge" value="0" min="0" disabled>
     </div>
 
     <!-- Group: resize to on-slide size (smart resize by usage) -->
     <div class="option-group">
-      <label class="checkbox-label">
+      <label class="checkbox-label"
+             title="Shrink each image down to the pixels it actually needs at the size it appears on the slide. A huge photo shown in a small box is downscaled to fit — usually a large saving with no visible quality loss. Images are never enlarged.">
         <input type="checkbox" id="opt-resize-to-display" disabled>
         Resize images to on-slide size
       </label>
-      <label class="option-label" for="opt-display-dpi">Target quality</label>
+      <label class="option-label" for="opt-display-dpi"
+             title="The pixel density to keep when resizing to the on-slide size. Higher DPI keeps more detail (better for printing) but saves less; lower DPI saves more and is fine for on-screen viewing.">Target quality</label>
       <select id="opt-display-dpi" disabled>
         <option value="300">Large — 300 DPI</option>
         <option value="220">Print — 220 DPI</option>
@@ -269,7 +290,8 @@
     </div>
 
     <!-- Group: minimum size threshold -->
-    <div class="option-group">
+    <div class="option-group"
+         title="Ignore images smaller than this. Tiny images (icons, logos) barely shrink and aren't worth re-encoding, so this keeps the run focused on the images that actually matter.">
       <label class="option-label" for="opt-min-size">Skip images under (KB)</label>
       <input type="number" id="opt-min-size" value="20" min="0" disabled>
     </div>
@@ -277,15 +299,18 @@
     <!-- Group: format decisions -->
     <div class="option-group">
       <div class="option-label">Format decisions</div>
-      <label class="checkbox-label">
+      <label class="checkbox-label"
+             title="Photos saved as PNG with no transparency are far larger than they need to be. Converting them to JPEG typically cuts their size dramatically with little visible change. Only images with no real transparency are converted.">
         <input type="checkbox" id="opt-convert-opaque-png" checked disabled>
         Convert opaque PNG → JPEG
       </label>
-      <label class="checkbox-label">
+      <label class="checkbox-label"
+             title="Reduce transparent PNGs (logos, screenshots, diagrams) to a smaller palette of colours. This shrinks them while keeping transparency intact — best for flat graphics, less so for photographic images.">
         <input type="checkbox" id="opt-quantize-transparent-png" checked disabled>
         Quantize transparent PNG (palette)
       </label>
-      <label class="checkbox-label">
+      <label class="checkbox-label"
+             title="Save images in the modern WebP format, which is usually smaller than both JPEG and PNG at the same quality. Off by default because only PowerPoint from Microsoft 365 version 2402 onward can open WebP images.">
         <input type="checkbox" id="opt-use-webp" disabled>
         Output WebP (M365 ≥ 2402 only)
       </label>
@@ -303,11 +328,13 @@
     <!-- Group: output file — new copy vs replace the original -->
     <div class="option-group">
       <div class="option-label">Output file</div>
-      <label class="radio-label">
+      <label class="radio-label"
+             title="Write the compressed result to a new file (name ending in _compressed) next to the original, leaving your original file completely untouched. The safe default.">
         <input type="radio" name="opt-output-mode" value="copy" checked disabled>
         Create a new copy
       </label>
-      <label class="radio-label">
+      <label class="radio-label"
+             title="Overwrite the original file with the compressed version once it passes a safety check. Saves you from having a second file, but there is no undo — keep a backup if unsure.">
         <input type="radio" name="opt-output-mode" value="replace" disabled>
         Replace the original file
       </label>
@@ -322,7 +349,8 @@
     <!-- Group: cleanup -->
     <div class="option-group">
       <div class="option-label">Cleanup</div>
-      <label class="checkbox-label">
+      <label class="checkbox-label"
+             title="Delete images and other media that are stored in the file but not referenced by any slide, layout or master — leftover bytes from earlier edits. Removing them is free space with no visible effect on the deck.">
         <input type="checkbox" id="opt-remove-unused-media" checked disabled>
         Remove unused media parts
       </label>

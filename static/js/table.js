@@ -112,7 +112,7 @@ function rowHtml(m) {
     <td><span class="${badgeClass(effAction)}">${escapeHtml(effAction)}</span></td>
     <td class="num">${formatBytes(effEst)} <small>${formatSavings(m.bytes, effEst)}</small></td>
     <td>
-      <select class="override-select" data-part="${escapeHtml(m.partName)}">
+      <select class="override-select" data-part="${escapeHtml(m.partName)}" title="Override how this single image is handled. Auto = let the app pick the best compression; Skip = keep this image exactly as it is; Remove = delete it from the file entirely.">
         <option value="auto"${override === 'auto' ? ' selected' : ''}>Auto</option>
         <option value="skip"${override === 'skip' ? ' selected' : ''}>Skip</option>
         <option value="remove"${override === 'remove' ? ' selected' : ''}>Remove</option>
