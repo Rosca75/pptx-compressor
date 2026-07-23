@@ -61,7 +61,7 @@ export function renderFonts(analysis) {
 /** One selectable row per font family. */
 function rowHtml(f) {
   const weights = f.weights === 1 ? '1 weight' : `${f.weights} weights`;
-  return `<label class="font-row">
+  return `<label class="font-row" title="Tick to remove this embedded font family from the file and reclaim its space. Anyone opening the deck without this font installed will see a substitute, so leave brand fonts embedded and remove large fallback faces you don't need.">
     <input type="checkbox" class="font-select" data-typeface="${escapeHtml(f.typeface)}">
     <span class="font-name">${escapeHtml(f.typeface || '(unnamed font)')}</span>
     <span class="font-detail">${weights}</span>
